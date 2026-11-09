@@ -29,9 +29,14 @@ def _codex(prompt: str) -> str:
         raise LLMError("codex not installed")
     with tempfile.TemporaryDirectory() as d:
         last = os.path.join(d, "last.txt")
-        # The machine's Codex default (e.g. reasoning "max") is far too slow for line-by-line correction.
+        # read-only sandbox alone still lets the model read any file (docs/research/cli-no-tool.md §4).
+        # Ignore the user's config/rules and remove the shell, web, app, plugin and image tools.
         r = subprocess.run(
             [exe, "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--ephemeral",
+             "--ignore-user-config", "--ignore-rules",
+             "-c", "features.shell_tool=false", "-c", 'web_search="disabled"',
+             "-c", "features.apps=false", "-c", "features.plugins=false", "-c", "features.view_image=false",
+             "-c", "features.image_generation=false", "-c", "features.hooks=false",
              "-c", f'model_reasoning_effort="{config.CODEX_EFFORT}"', "-o", last, "-"],
             input=prompt, capture_output=True, text=True, cwd=d, env=_env(), timeout=config.LLM_TIMEOUT_SEC,
         )

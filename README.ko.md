@@ -33,6 +33,8 @@ Mac mini M4(16GB)에서 35분 녹음이 약 13.5분 뒤 회의록이 됩니다. 
 
 ## 동작 방식
 
+**가상 회의 한 건의 실제 중간 결과로 단계별 설명: [docs/how-it-works.ko.md](docs/how-it-works.ko.md)**
+
 폰 녹음(m4a) → Syncthing → Mac `~/rec/inbox` → 60초 안정·중복·5분 이상 확인 → 화자 분리(Nemotron 3)
 → 받아쓰기(Qwen3-ASR 1.7B + 정렬) → 2차 받아쓰기(Whisper large-v3 turbo) → 오인식 보정(Codex) →
 분류·제목 → 근거 링크가 달린 요약 → Obsidian 노트

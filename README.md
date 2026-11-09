@@ -37,6 +37,8 @@ transcription is about as far from two commercial Korean services as they are fr
 
 ## How it works
 
+**Step by step, with the real intermediate output of one fictional meeting: [docs/how-it-works.md](docs/how-it-works.md).**
+
 ```mermaid
 flowchart LR
   P["Phone recorder<br/>(m4a)"] -->|Syncthing| I["Mac: ~/rec/inbox"]
