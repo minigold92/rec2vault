@@ -14,6 +14,7 @@ import os
 import socket
 import tempfile
 import tomllib
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +31,8 @@ DEFAULTS = {'root': str(Path.home() / 'QuietClerk'), 'inbox': None, 'output': No
             'providers.allow_unverified': [], 'providers.ollama.model': '',
             'providers.ollama.endpoint': 'http://127.0.0.1:11434',
             'providers.omp.profile': 'quietclerk', 'providers.codex.effort': 'low', 'providers.codex.speed': 'standard',
-            'server.port': 0, 'retention.wav_days': 7, 'ui.language': 'en'}
+            'server.port': 0, 'retention.wav_days': 7, 'ui.language': 'en',
+            'updates.check': True, 'vocabulary.terms': [], 'vocabulary.replace': []}
 PROVIDERS = ('codex', 'claude', 'gemini', 'ollama', 'omp')
 
 
@@ -46,11 +48,20 @@ def _flatten(data, prefix=''):
         name = f'{prefix}.{key}' if prefix else key
         if name == 'providers.agy' or name.startswith('providers.agy.'):
             _validate(name, value)  # Reject even an empty removed-provider table.
-        if isinstance(value, dict) and name != 'providers.consent':
+        if isinstance(value, dict) and name not in ('providers.consent', 'vocabulary.terms', 'vocabulary.replace'):
             result.update(_flatten(value, name))
         else:
-            result[name] = value
+            result[name] = _validate(name, value) if name.startswith('vocabulary.') else value
     return result
+
+
+def _vocabulary_text(key, value):
+    # Same rule as backends.quality._term: any Unicode "other" character (controls, format
+    # characters such as zero-width or bidi marks, private use, surrogates) is refused.
+    if (not isinstance(value, str) or not 1 <= len(value.strip()) <= 40 or
+            any(unicodedata.category(c).startswith('C') for c in value.strip())):
+        raise SettingsError(key, 'expected 1–40 characters without control characters')
+    return value.strip()
 
 
 def _validate(key, value):
@@ -71,6 +82,22 @@ def _validate(key, value):
                'notes.output_language': ('same', 'ko', 'en'), 'ui.language': ('ko', 'en')}
     if key in options and value not in options[key]:
         raise SettingsError(key, 'invalid language')
+    if key.startswith('vocabulary.'):
+        if len(value) > 200:
+            raise SettingsError(key, 'expected at most 200 entries')
+        if key == 'vocabulary.terms':
+            return list(dict.fromkeys(_vocabulary_text(key, term) for term in value))
+        result, seen = [], {}
+        for row in value:
+            if not isinstance(row, dict) or set(row) != {'from', 'to'}:
+                raise SettingsError(key, 'expected {from, to} entries')
+            source, target = (_vocabulary_text(key, row[field]) for field in ('from', 'to'))
+            if source in seen and seen[source] != target:
+                raise SettingsError(key, 'conflicting replacements')
+            if source not in seen:
+                result.append({'from': source, 'to': target})
+            seen[source] = target
+        return result
     if key == 'providers.codex.speed' and value not in ('standard', 'fast'):
         raise SettingsError(key, 'expected standard or fast')
     if key == 'since':
@@ -87,7 +114,7 @@ def _validate(key, value):
     if key == 'providers.consent':
         for provider, fields in value.items():
             if provider not in PROVIDERS or not isinstance(fields, list) or any(
-                    field not in ('transcript', 'source_name', 'project_list') for field in fields):
+                    field not in ('transcript', 'source_name', 'project_list', 'vocabulary') for field in fields):
                 raise SettingsError(key, 'expected provider field lists')
     return value
 

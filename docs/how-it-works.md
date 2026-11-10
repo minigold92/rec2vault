@@ -341,6 +341,7 @@ If the same recording is processed again (you changed the LLM, or asked for a fr
 | Transcript text of every turn (stages `correct`, `classify`, `summarize`) | The LLM CLI you configured (here `codex`, i.e. OpenAI) |
 | Source file name and the list of project names already in your vault (stage `classify` only) | The same CLI |
 | Model weights | Downloaded once at install; at run time loaded from the local Hugging Face cache only |
+| Update check (`updates.check`, default on) | Once a day `git fetch` in the install checkout asks GitHub for new commits; no meeting data, settings or notes |
 
 How it is limited:
 

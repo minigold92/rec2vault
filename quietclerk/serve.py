@@ -17,7 +17,7 @@ from concurrent.futures import Future
 from contextlib import closing
 from pathlib import Path
 
-from . import config, intake, store, store_ops
+from . import config, intake, selfupdate, store, store_ops
 from .executor import Executor
 
 SUPPORT = Path.home() / 'Library/Application Support/QuietClerk'
@@ -67,7 +67,7 @@ OPS_SOURCE = 'rec-pipeline'  # name kept so the existing board and rules keep ma
 class Runtime:
     def __init__(self, settings=None, *, support=None, legacy_labels=('local.rec.pipeline',),
                  label_check=legacy_registered, executor_factory=Executor, scan=intake.scan,
-                 fatal=os._exit, scan_interval=60, recover_publication=None):
+                 fatal=os._exit, scan_interval=60, recover_publication=None, update_worker=None):
         self.settings = settings or config.load()
         self.support = Path(support) if support is not None else SUPPORT
         self.lock = ServiceLock(self.support / 'serve.lock')
@@ -85,6 +85,7 @@ class Runtime:
         self.settings_lock = threading.Lock()
         self.maintenance = queue.Queue()
         self.monitor_interval = 60
+        self.updates = selfupdate.Updates(self, worker=update_worker)
 
     def start(self):
         self.lock.acquire()
@@ -94,6 +95,7 @@ class Runtime:
             self.execution_lock.acquire()
             with closing(store.connect(self.db)) as con:
                 store.recover(con, self.boot, recover_publication=self.recover_publication)
+            self.updates.recover()
             for name, target in (('scheduler', self._scheduler), ('executor', self._executor),
                                  ('bootstrap', self._bootstrap), ('monitor', self._monitor)):
                 thread = threading.Thread(target=self._guard, args=(target,), name=f'quietclerk-{name}', daemon=True)
@@ -117,6 +119,7 @@ class Runtime:
                 self.scan_requested.clear()
                 self.scan(con, settings=self.settings)
                 self.wake.set()
+                self.updates.check(automatic=True)
                 self.scan_requested.wait(self.scan_interval)
 
     def _executor(self):
@@ -124,11 +127,22 @@ class Runtime:
             executor = self.executor_factory(con, self.boot, self.settings)
             while not self.stopping.is_set():
                 self.wake.clear()
-                self._run_maintenance(con)
-                self._delete_pending(con)
-                executor.settings = self.settings
-                started = time.time()
-                result = executor.run_one(paused=store_ops.paused(con))
+                with self.updates.lock:
+                    blocked = self.updates.before_job()
+                    if not blocked:
+                        self.updates.busy = True
+                if blocked:
+                    self.wake.wait(0.25)
+                    continue
+                try:
+                    self._run_maintenance(con)
+                    self._delete_pending(con)
+                    executor.settings = self.settings
+                    started = time.time()
+                    result = executor.run_one(paused=store_ops.paused(con))
+                finally:
+                    with self.updates.lock:
+                        self.updates.busy = False
                 if result is None:
                     self.wake.wait(0.25)
                 elif result['status'] == 'done':

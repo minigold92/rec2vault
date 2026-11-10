@@ -32,7 +32,7 @@ the easiest to review.
 
 ```sh
 uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn \
-  --with jinja2 --with httpx --with jsonschema python -m pytest -q tests
+  --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
 ```
 
 The suite runs on Linux CI without MLX: models and text engines are faked, audio is synthesized

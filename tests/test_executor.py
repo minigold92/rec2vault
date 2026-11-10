@@ -116,6 +116,21 @@ def test_reprocessing_mode_boundaries(engine, mode, expected):
     assert calls == expected
 
 
+def test_resummarize_keeps_the_old_transcript_after_models_or_rules_change(engine):
+    # Models, ASR rules or the vocabulary may change after a meeting was transcribed; a
+    # re-summary must reuse that transcript instead of transcribing again (2026-11-10).
+    con, settings, row = engine
+    calls, versions = [], {}
+    rerun(con, settings, row, calls, versions)
+    versions.update(diarize=2, transcribe=2, second_pass=2, correct=2)
+    calls.clear()
+    second = rerun(con, settings, row, calls, versions, mode='resummarize')
+    assert calls == ['classify', 'summarize', 'render']
+    kept = con.execute("SELECT stage FROM stage_runs WHERE run_id=? AND status='reused'",
+                       (second['current_run_id'],)).fetchall()
+    assert {r['stage'] for r in kept} >= {'diarize', 'transcribe', 'second_pass', 'correct'}
+
+
 @pytest.mark.parametrize('point', ['next_stage', 'external', 'publish'])
 def test_exclusion_finishes_at_next_checkpoint(engine, point):
     con, settings, row = engine

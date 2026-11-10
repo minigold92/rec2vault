@@ -373,6 +373,7 @@ external_text_to:
 | 모든 발언의 텍스트(`correct`, `classify`, `summarize` 단계) | 설정한 LLM CLI(여기서는 `codex`, 즉 OpenAI) |
 | 원본 파일 이름, 보관함에 이미 있는 프로젝트 이름 목록(`classify` 단계만) | 같은 CLI |
 | 모델 가중치 | 설치할 때 한 번 내려받고, 실행 중에는 로컬 Hugging Face 캐시에서만 읽음 |
+| 업데이트 확인(`updates.check`, 기본 켬) | 하루 한 번 설치 체크아웃에서 `git fetch`로 GitHub에 새 커밋만 물어봄. 회의 데이터·설정·회의록은 보내지 않음 |
 
 제한하는 방법입니다.
 

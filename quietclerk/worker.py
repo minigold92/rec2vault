@@ -9,6 +9,8 @@ from pathlib import Path
 from .backends import BackendUnavailable, AudioDecodeError, ModelMissing, InvalidOutput, validate_output
 from .backends.mlx import MLXBackend, STAGE_MODELS
 from .language import detect, processing_language, fixed_language
+from .transcript import artifact_rows
+from .backends.quality import apply_replacements, replacements
 
 ERRORS = (ModelMissing, BackendUnavailable, AudioDecodeError, InvalidOutput)
 
@@ -27,14 +29,23 @@ def run(stage, inputs, output, settings, backend):
         if not availability.available:
             raise BackendUnavailable(availability.reason)
     if stage == 'diarize':
-        result = validate_output(backend.diarize(inputs[0]), duration)
+        raw = backend.diarize(inputs[0])
+        result = {'segments': validate_output(artifact_rows(raw, 'segments'), duration),
+                  'speaker_review': raw.get('speaker_review', []) if isinstance(raw, dict) else []}
     elif stage == 'detect_language':
-        segments = validate_output(json.loads(inputs[1].read_text()), duration)
+        segments = validate_output(artifact_rows(json.loads(inputs[1].read_text()), 'segments'), duration)
         result = detect(backend, inputs[0], segments, duration, settings)
     else:
         detection = json.loads(inputs[1].read_text())
         lang = processing_language(settings, detection)
-        result = validate_output(getattr(backend, stage)(inputs[0], lang), duration, words=True)
+        raw = getattr(backend, stage)(inputs[0], lang)
+        rows = validate_output(artifact_rows(raw), duration, words=True)
+        rows, replaced = apply_replacements(rows, replacements(settings))
+        dropped = raw.get('dropped', []) if isinstance(raw, dict) else []
+        dropped = validate_output(dropped, duration, words=True)
+        if any(row.get('why') not in ('repetition', 'silence_phrase', 'token_cap') for row in dropped):
+            raise InvalidOutput('invalid dropped reason')
+        result = {'words': rows, 'dropped': dropped, 'replaced': replaced}
     temporary = Path(str(output) + '.part')
     temporary.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False), encoding='utf-8')
     temporary.replace(output)

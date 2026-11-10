@@ -8,6 +8,7 @@ import {live, subscribe, reconnect} from './live.js';
 import {banner, btn, chip, code} from './ui.js';
 import {localTime} from './fmt.js';
 import {isBlocked} from './jobs.js';
+import {mountUpdateBand, restarting, subscribeUpdate} from './update.js';
 
 const NAV = [
   ['home', '/home', 'home', '홈', 'Home'],
@@ -64,7 +65,8 @@ export function syncEngineControls(root = document) {
 function engineBox() {
   const snapshot = live.snapshot;
   let state;
-  if (live.failed) state = L('엔진 연결 끊김', 'Engine unreachable');
+  if (live.failed && restarting()) state = L('업데이트 중 · 다시 연결하는 중', 'Updating · reconnecting');
+  else if (live.failed) state = L('엔진 연결 끊김', 'Engine unreachable');
   else if (!snapshot) state = L('엔진 확인 중', 'Checking the engine');
   else if (snapshot.paused) state = L('엔진 켜짐 · 일시정지', 'Engine on · paused');
   else state = L('엔진 켜짐', 'Engine on');
@@ -98,9 +100,10 @@ function authBanner() {
   ], [btn({small: true, label: L('다시 확인', 'Check again'), on: {click: reconnect}})]);
 }
 
+// An update that swaps the engine breaks the stream on purpose; the update band says so instead.
 function topNotices() {
   if (live.authLost) return authBanner();
-  return live.failed ? offlineBanner() : null;
+  return live.failed && !restarting() ? offlineBanner() : null;
 }
 
 async function refreshBadge() {
@@ -124,6 +127,9 @@ export function mountShell(screen, {wizardStep} = {}) {
   const slots = {};
   const content = h('div', {class: 'slot'});
   const noticeSlot = h('div', {class: 'slot'});
+  const alertHost = h('div', {class: 'slot'});    // sign-in / engine notices, drawn again with the chrome
+  const updateHost = h('div', {class: 'slot'});   // the update band: draws itself, only when it changes
+  noticeSlot.append(alertHost, updateHost);
   const announcer = h('div', {id: 'live', class: 'sr-only', 'aria-live': 'polite'});
   const skip = h('a', {class: 'skip', href: '#main'});
   const main = h('main', {class: wizardStep ? 'stack gap5' : 'main', id: 'main', tabindex: '-1'});
@@ -162,12 +168,12 @@ export function mountShell(screen, {wizardStep} = {}) {
       replace(slots.side, brand(true), h('nav', {class: 'nav'}, navLinks(current, true)),
         h('div', {class: 'side-foot'}, engineBox(), langSwitch()));
       replace(slots.mobile, brand(false),
-        live.failed ? chip('err', '!', L('엔진 끊김', 'Offline'))
+        live.failed ? (restarting() ? chip('run', '●', L('업데이트 중', 'Updating')) : chip('err', '!', L('엔진 끊김', 'Offline')))
           : live.snapshot && live.snapshot.paused ? chip('warn', '‖', L('일시정지', 'Paused')) : null,
         langSwitch());
       replace(slots.tab, navLinks(current, false));
     }
-    replace(noticeSlot, topNotices());
+    replace(alertHost, topNotices());
     syncEngineControls(root);
   };
   chrome();
@@ -175,6 +181,15 @@ export function mountShell(screen, {wizardStep} = {}) {
   subscribe(async () => {
     await refreshBadge();
     chrome();
+  });
+  mountUpdateBand(updateHost);
+  // Drawn again when the stream breaking stops (or starts) meaning "the update is restarting the engine".
+  let wasRestarting = false;
+  subscribeUpdate(() => {
+    if (restarting() !== wasRestarting) {
+      wasRestarting = !wasRestarting;
+      chrome();
+    }
   });
   return {content, footer, main};
 }

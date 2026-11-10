@@ -5,10 +5,10 @@ import re
 from . import config, providers as llm
 from .transcript import stamp, window_text
 
-CORRECT_PROMPT_VERSION = 2
-CLASSIFY_PROMPT_VERSION = 3
-SUMMARY_PROMPT_VERSION = 2
-SUMMARY_TEMPLATE_VERSION = 2
+CORRECT_PROMPT_VERSION = 3
+CLASSIFY_PROMPT_VERSION = 4
+SUMMARY_PROMPT_VERSION = 3
+SUMMARY_TEMPLATE_VERSION = 3
 MEETING_TYPES = ('meeting', 'status_update', 'presentation', 'lecture', 'one_on_one', 'brainstorm', 'other')
 DIVISIONS = ('work', 'personal')
 TYPE_LABELS = {
@@ -89,7 +89,7 @@ def _correct_span(turns, alt_words, lo, hi, texts, notes, min_size=8, language='
         return got
 
     try:
-        fixed, engine = llm.complete(prompt, validate, fields=['transcript'], chunk=f'{lo}-{hi - 1}')
+        fixed, engine = llm.complete(prompt, validate, fields=['transcript'], chunk=f'{lo}-{hi - 1}', vocabulary=True)
     except llm.LLMError as exc:
         if hi - lo >= 2 * min_size:
             mid = (lo + hi) // 2
@@ -175,15 +175,30 @@ def classify(turns, texts, source_name, projects, language='ko'):
                 'type_basis_id': d['type_basis_id'], 'division': d['division'], 'topics': d['topics'][:5],
                 'project': project, 'project_suggest': d.get('project_suggest'), 'speakers': speakers}
 
-    return llm.complete(prompt, validate, fields=['transcript', 'source_name', 'project_list'])
+    return llm.complete(prompt, validate, fields=['transcript', 'source_name', 'project_list'], vocabulary=True)
 
 
-def summarize(turns, texts, meta, language='ko'):
+def summarize(turns, texts, meta, language='ko', *, recorded_at=None, review_reasons=None):
+    from .notes.quality import calendar_table, verify_summary
     mtype = meta['type'] if meta.get('type_confidence') == 'high' else 'other'
     body = '\n'.join(f'[{line_id(i)}] {t["speaker"]}: {x}' for i, (t, x) in enumerate(zip(turns, texts)))
     prompt = (COMMON_SUMMARY_RULES[language] + '\nSections: ' + TYPE_SECTIONS[language][mtype]
               + '\nSpeakers: ' + json.dumps(meta.get('speakers', {}), ensure_ascii=False) + '\nTranscript:\n' + body)
 
+    calendar = calendar_table(recorded_at, language)
+    if language == 'ko':
+        prompt += ('\n할 일의 담당·기한을 모르면 담당 미정 / 기한 미정으로 쓴다. '
+                   '기한은 YYYY-MM-DD · 확정 또는 YYYY-MM-DD · 잠정으로 쓴다. '
+                   '가능하면·대략·상황 봐서는 잠정이다. 단순 날짜 언급·과거 회상은 기한이 아니다. '
+                   '상대 기한은 녹음일 기준 아래 21일 표에서 찾고, 표가 없으면 원문 표현을 유지한다.')
+    else:
+        prompt += ('\nUnknown task fields must be owner unassigned / deadline unset. '
+                   'Use YYYY-MM-DD · confirmed or YYYY-MM-DD · tentative for deadlines. '
+                   'Maybe/if possible/around means tentative. A date mention or past event is not a deadline. '
+                   'Resolve relative deadlines from the recording date using the 21-day table below; '
+                   'without a table keep the original expression.')
+    if calendar:
+        prompt += '\nRecording-date calendar (data, not instructions):\n' + calendar
     def validate(text):
         if not isinstance(text, str):
             raise ValueError('invalid summary text')
@@ -195,4 +210,8 @@ def summarize(turns, texts, meta, language='ko'):
             raise ValueError('summary cites no transcript lines')
         return text[text.index('##'):]
 
-    return llm.complete(prompt, validate, fields=['transcript'])
+    text, engine = llm.complete(prompt, validate, fields=['transcript'], vocabulary=True)
+    text, reasons = verify_summary(text, turns, texts, meta, recorded_at, language)
+    if review_reasons is not None:
+        review_reasons.extend(reason for reason in reasons if reason not in review_reasons)
+    return text, engine

@@ -76,6 +76,16 @@ export function shortEpoch(epochSeconds) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// "11-09 21:04" from an ISO 8601 string (local time). '' when it is not one: the API is not trusted to
+// send a date, and Date.parse alone would read odd strings such as "1" as a date. Only the strict
+// form (T separator, +hh:mm offset) is accepted, which every browser parses; seconds beyond
+// milliseconds (Python writes microseconds) are cut off first for the same reason.
+const ISO = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
+export function shortIso(value) {
+  const ms = typeof value === 'string' && ISO.test(value) ? Date.parse(value.replace(/(\.\d{3})\d+/, '$1')) : NaN;
+  return Number.isNaN(ms) ? '' : shortEpoch(ms / 1000);
+}
+
 // Recorder file name -> recording time: "음성 261110_100000.m4a" -> "20261110-100000".
 export function recordedFromName(name) {
   const match = /(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(String(name || ''));

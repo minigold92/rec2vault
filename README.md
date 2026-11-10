@@ -50,11 +50,15 @@ does the same job with hardware you probably own:
 
 - **Hands-off.** Save a recording and walk away. The phone syncs it, the Mac picks it up once the
   file stops changing, and a note appears. Failed steps retry; nothing is processed twice.
+- **Guarded transcription.** Repeat loops and phrases models invent in silence are cut and listed;
+  a word list of your names and terms steers recognition and fixes known mishearings.
 - **Speakers and timestamps.** Local diarization (NVIDIA Nemotron 3) and transcription
   (Qwen3-ASR 1.7B with word alignment, plus a Whisper second pass) on Apple Silicon via MLX.
 - **Short, checkable minutes.** Key summary, decisions, open issues and tasks with owner and
   deadline. Every sentence ends with links like `[[#^t12|01:23]]` to the transcript line it came
-  from, so you can check it in seconds.
+  from, so you can check it in seconds. Owners, deadlines and numbers are then checked against those
+  lines in code; anything the cited line does not say is marked for review, and "next Friday" becomes
+  a date.
 - **Your edits survive.** Change the title, tick tasks or write notes in Obsidian; re-running the
   summary rewrites only the engine's section.
 - **Korean and English.** The language is detected per recording; notes come out in the meeting's
@@ -104,6 +108,7 @@ intermediate files of one fictional meeting is in **[docs/how-it-works.md](docs/
 | Transcript text | The engines you enabled, with the fields you agreed to. None in local-only mode. |
 | File name, project list | Only if you agreed to send them (used for the title and project). |
 | Notes | Your vault folder. The note lists which engines received text. |
+| Update check | Once a day the Mac asks GitHub whether this checkout has new commits (`git fetch`). Nothing about your meetings is sent. Turn off in Settings. |
 
 Model downloads come from Hugging Face on first install; processing runs with `HF_HUB_OFFLINE=1`.
 
@@ -164,8 +169,12 @@ phone once.
 <details>
 <summary><b>Update, status and uninstall</b></summary>
 
+When a new version is out, a bar appears at the top of every screen. Press **Update**: QuietClerk
+pulls the new code, swaps it in and reconnects the page, or rolls back if anything fails. If a
+recording is being processed, the update waits until it finishes. From a terminal:
+
 ```sh
-git pull && deploy/setup.sh update     # swaps in the new version, rolls back on failure
+git pull && deploy/setup.sh update     # same as the Update button
 deploy/setup.sh status                 # engine state as JSON
 deploy/setup.sh doctor                 # machine, models and service checks
 
@@ -239,6 +248,9 @@ apply from the next recording.
 | `providers.consent` | — | Fields each engine may receive |
 | `providers.local_only` | `false` | Block every external engine |
 | `providers.codex.speed` | `standard` | `fast` uses Codex Fast mode (about 1.4× faster, more plan usage) |
+| `updates.check` | `true` | Check GitHub for a new version once a day |
+| `vocabulary.terms` | — | Names and terms to listen for (up to 200); also given to the correction engine if you allow `vocabulary` |
+| `vocabulary.replace` | — | Exact fixes applied locally after transcription, e.g. `{from = "책 마루", to = "책마루"}` |
 
 Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY` and
 `QC_PORT` override the file.
@@ -255,7 +267,7 @@ Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOC
 
 ```sh
 uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn \
-  --with jinja2 --with httpx --with jsonschema python -m pytest -q tests
+  --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
 ```
 
 The tests use synthetic audio and fake engines; they do not load MLX models. See

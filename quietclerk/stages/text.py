@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from .. import artifacts, config, providers as llm, postprocess, procs, render, store
 from ..executor import Blocked, Excluded, Stage
 from ..language import context_language
-from ..transcript import turns as build_turns
+from ..transcript import artifact_rows as _artifact_rows, turns as build_turns
 
 
 def _providers(ctx):
@@ -26,7 +26,9 @@ def _llm_params(ctx):
     return {'language': processing_language(ctx), 'providers': _providers(ctx),
             'local_only': ctx.settings.get('providers.local_only', False),
             'consent': ctx.settings.get('providers.consent', {}),
+            'vocabulary_terms': ctx.settings.get('vocabulary.terms', []),
             'models': {'codex.effort': ctx.settings.get('providers.codex.effort', 'low'),
+                       'codex.speed': ctx.settings.get('providers.codex.speed', 'standard'),
                        'ollama.model': ctx.settings.get('providers.ollama.model', '')}}
 
 
@@ -39,12 +41,13 @@ def _legacy_llm(ctx):
 
 
 def _turns(ctx, out):
-    artifacts.write_json(out, build_turns(ctx.load('transcribe'), ctx.load('diarize')))
+    artifacts.write_json(out, build_turns(_artifact_rows(ctx.load('transcribe')),
+                                          _artifact_rows(ctx.load('diarize'), 'segments')))
 
 
 def _correct(ctx, out):
     with _legacy_llm(ctx):
-        texts, notes = postprocess.correct(ctx.load('turns'), ctx.load('second_pass'), processing_language(ctx))
+        texts, notes = postprocess.correct(ctx.load('turns'), _artifact_rows(ctx.load('second_pass')), processing_language(ctx))
     artifacts.write_json(out, {'texts': texts, 'notes': notes, 'turns_sha256': artifacts.sha256(ctx.paths['turns'])})
 
 
@@ -57,10 +60,12 @@ def _classify(ctx, out):
 
 
 def _summarize(ctx, out):
+    reasons = []
     with _legacy_llm(ctx):
         text, engine = postprocess.summarize(ctx.load('turns'), ctx.load('correct')['texts'],
-                                             ctx.load('classify')['meta'], output_language(ctx))
-    artifacts.write_json(out, {'text': text, 'engine': engine})
+                                             ctx.load('classify')['meta'], output_language(ctx),
+                                             recorded_at=ctx.job['recorded_at'], review_reasons=reasons)
+    artifacts.write_json(out, {'text': text, 'engine': engine, 'review_reasons': reasons})
 
 
 def stages():
@@ -75,5 +80,6 @@ def stages():
             'output_language': output_language(c)}, _classify),
         Stage('summarize', 'summary.json', ('correct', 'classify'), lambda c: {
             **_llm_params(c), 'prompt_version': postprocess.SUMMARY_PROMPT_VERSION,
-            'template_version': postprocess.SUMMARY_TEMPLATE_VERSION, 'output_language': output_language(c)}, _summarize),
+            'template_version': postprocess.SUMMARY_TEMPLATE_VERSION, 'output_language': output_language(c),
+            'recorded_at': c.job['recorded_at']}, _summarize),
     )

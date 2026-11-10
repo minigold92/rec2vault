@@ -88,16 +88,33 @@ def known_projects(out_dir):
     return sorted(found)
 
 
+def _inert_plugins(text):
+    """Remove executable delimiters before Markdown or Obsidian plugins see them."""
+    text = str(text).replace('`', '｀').replace('~', '～')
+    text = text.replace('<%', '‹%').replace('%>', '%›').replace('%%', '％％')
+    # Dataview inline expressions also occur in table cells and indented quotes.
+    return re.sub(r'(?m)(^|[\s|>])=(?!=)', r'\1＝', text)
+
+
+def _inert_values(value):
+    if isinstance(value, str):
+        return _inert_plugins(value)
+    if isinstance(value, list):
+        return [_inert_values(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _inert_values(item) for key, item in value.items()}
+    return value
+
 def safe_text(text):
     """Escape HTML and disable all authored Markdown links, images and block IDs."""
-    text = html.escape(str(text), quote=False)
+    text = html.escape(_inert_plugins(text), quote=False)
     text = text.replace('\\', '\\\\')
     return re.sub(r'([\[\]`*_!^|])', r'\\\1', text)
 
 
 def safe_summary(text):
     # Keep structural headings/lists, but only renderer-created links may navigate.
-    text = html.escape(text, quote=False)
+    text = html.escape(_inert_plugins(text), quote=False)
     text = re.sub(r'!?\[([^\]\n]*)\]\([^\n]*?\)', lambda m: m[1], text)
     text = text.replace('[[', '\\[\\[').replace(']]', '\\]\\]')
     return re.sub(r'(?m)^\s*\[[^\]]+\]:.*$', '', text)
@@ -159,19 +176,42 @@ def split_tasks(summary):
 
 
 def components(job, recorded, turns, texts, meta, summary, notes, engines, processed_at,
-               language='ko', language_detected=None, output_language=None):
+               language='ko', language_detected=None, output_language=None, review_reasons=(),
+               dropped=(), speaker_review=()):
     output_language = output_language or language
     en = output_language == 'en'
     starts = {line_id(i): t['start'] for i, t in enumerate(turns)}
     title = meta.get('title') or f'{recorded:%Y-%m-%d %H:%M} ' + ('Recording' if en else '녹음')
-    reasons = [n for n in notes if 'failed' in n]
+    reasons = list(dict.fromkeys([n for n in notes if 'failed' in n] + list(review_reasons)))
+    if dropped:
+        reasons.append('asr_dropped')
+    if speaker_review:
+        reasons.append('speaker_review')
     if meta.get('type_confidence') != 'high':
         reasons.append('type_uncertain')
     if language_detected == 'uncertain':
         reasons.append('language_uncertain')
     if '## 확인 필요' in summary or '## Review needed' in summary:
         reasons.append('summary_review')
+    reasons = list(dict.fromkeys(reasons))
     tasks, summary = split_tasks(safe_summary(summary))
+    messages = {
+        'asr_dropped': ('ASR omitted suspected hallucination/repetition; check the recording.',
+                        '받아쓰기에서 환각·반복 의심 구간을 제외했습니다. 원음을 확인해 주세요.'),
+        'speaker_review': ('Speaker labels require review (merged fragments, speaker cap or low confidence).',
+                           '화자 병합·화자 수 상한 또는 낮은 신뢰도로 화자 구분을 확인해야 합니다.'),
+        'unsupported_owner': ('A task owner is not backed by its cited lines; it is marked "check source".',
+                              '할 일 담당이 인용한 대화록으로 뒷받침되지 않아 ‘근거 확인’을 붙였습니다.'),
+        'unsupported_deadline': ('A task deadline is not backed by its cited lines; it is marked "check source".',
+                                 '할 일 기한이 인용한 대화록으로 뒷받침되지 않아 ‘근거 확인’을 붙였습니다.'),
+        'unsupported_number': ('Some numbers or units differ from the cited lines; check marked figures.',
+                               '숫자·단위가 인용한 대화록과 다릅니다. 표시한 수치를 확인해 주세요.'),
+        'weak_citation': ('Some claims have little lexical overlap with their cited lines; check the evidence.',
+                          '일부 문장이 인용한 대화록과 어휘 겹침이 낮습니다. 근거를 확인해 주세요.'),
+    }
+    warnings = [messages[reason][0 if en else 1] for reason in dict.fromkeys(reasons) if reason in messages]
+    if warnings:
+        summary += '\n\n' + ('## Review needed' if en else '## 확인 필요') + '\n' + '\n'.join('- ' + w for w in warnings)
     tasks = [link_citations(t, starts, reasons) for t in tasks]
     summary = link_citations(shape_summary(summary), starts, reasons)
     speakers = meta.get('speakers', {})
@@ -190,6 +230,7 @@ def components(job, recorded, turns, texts, meta, summary, notes, engines, proce
         'external_text_to': engines.get('external_text_to', []), 'processed_at': processed_at.isoformat(timespec='seconds'),
         'tags': ['meeting-notes'],
     }
+    props = _inert_values(props)
     rows = []
     for label, speaker in sorted(speakers.items()):
         role, name = safe_text(speaker.get('role') or ''), safe_text(speaker.get('name') or '')

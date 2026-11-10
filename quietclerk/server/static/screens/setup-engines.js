@@ -16,7 +16,11 @@ const FIELDS = [
   ['transcript', ['대화록', 'Transcript'], ['교정·분류·요약', 'correct, classify, summarize']],
   ['source_name', ['녹음 파일 이름', 'Recording file name'], ['분류', 'classify']],
   ['project_list', ['프로젝트 목록', 'Project list'], ['분류', 'classify']],
+  ['vocabulary', ['단어장', 'Word list'], ['교정·분류·요약', 'correct, classify, summarize']],
 ];
+// Turning an engine on agrees to what it cannot work without. The word list is optional (contract §10.7), so it stays
+// off until it is ticked: the names in it may be as private as the transcript.
+const DEFAULT_FIELDS = ['transcript', 'source_name', 'project_list'];
 const VENDOR = {codex: 'OpenAI', claude: 'Anthropic'};
 
 export async function mount({content, footer}) {
@@ -52,7 +56,7 @@ export async function mount({content, footer}) {
     const consent = {...s('providers.consent')};
     if (on) {
       order.push(name);
-      consent[name] = consent[name] && consent[name].length ? consent[name] : FIELDS.map(([f]) => f);
+      consent[name] = consent[name] && consent[name].length ? consent[name] : [...DEFAULT_FIELDS];
     } else {
       delete consent[name];
     }
@@ -108,6 +112,15 @@ export async function mount({content, footer}) {
 
   const row = (term, ...detail) => [h('dt', null, term), h('dd', null, detail)];
 
+  // The one optional field: what yes and no do, and where the list itself is edited.
+  function wordListNote() {
+    const count = (s('vocabulary.terms') || []).length;
+    return h('p', {class: 'small muted'}, L('동의하면 교정할 때 단어장도 함께 보내 이름·용어를 맞춰 줘요. 동의하지 않으면 단어장 없이 교정해요.',
+      'If you agree, the word list goes along when correcting, so names and terms come out right. If not, the text is corrected without it.'), ' ',
+    count ? L(`지금 단어장에 ${count}개가 있어요. `, `The word list has ${count} now. `) : L('지금 단어장이 비어 있어요. ', 'The word list is empty now. '),
+    h('a', {href: '/settings#s-vocab'}, count ? L('단어장 보기', 'Open the word list') : L('단어장 채우기', 'Fill in the word list')));
+  }
+
   function card(p, index, count) {
     const name = p.name;
     const on = s('providers.order').includes(name);
@@ -151,10 +164,10 @@ export async function mount({content, footer}) {
         h('span', null, h('b', {class: 'ink'}, L('도구 차단이 확인되지 않은 엔진이지만 이것만 예외로 쓰기', 'Allow this unverified engine as an exception')), h('br'),
           h('span', {class: 'muted'}, L('대체 경로에는 들어가지 않고, 순서에 넣은 경우에만 써요.', 'It is not used as a fallback; only when you put it in the order.')))) : null,
       on ? h('fieldset', {class: 'stack fieldset-box'}, h('legend', null, L('이 엔진에 보낼 것', 'What this engine receives')),
-        FIELDS.map(([field, [ko, en], [uko, uen]]) => h('label', {class: 'check small'},
+        FIELDS.map(([field, [ko, en], [uko, uen]]) => [h('label', {class: 'check small'},
           h('input', {type: 'checkbox', checked: consent.includes(field), 'data-engine': '', on: {change: (event) => setField(name, field, event.target.checked)}}),
           h('span', null, h('b', {class: 'ink'}, L(ko, en)), ' ', h('code', null, field), h('br'), h('span', {class: 'muted'}, L(`쓰는 단계: ${uko}`, `Used in: ${uen}`)))),
-        ),
+        field === 'vocabulary' ? wordListNote() : null]),
         h('p', {class: 'small muted'}, L('오디오는 보내지 않아요. 체크를 끄면 그 필드는 보내지 않고, 대화록을 끄면 이 엔진은 쓰지 않아요.', 'Audio is never sent. Unchecked fields aren\'t sent; without the transcript this engine isn\'t used.'))) : null,
       name === 'ollama' ? h('div', {class: 'row'}, h('label', {class: 'small', for: 'ollama-model'}, L('모델', 'Model')),
         h('input', {class: 'input mid', id: 'ollama-model', value: s('providers.ollama.model'), 'data-engine': '', placeholder: 'qwen3:8b',

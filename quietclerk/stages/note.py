@@ -27,6 +27,18 @@ def _legacy_notes_present(ctx):
     return False
 
 
+def _quality_metadata(ctx):
+    dropped, speakers = [], []
+    for stage in ('transcribe', 'second_pass', 'diarize'):
+        if stage not in ctx.paths:
+            continue
+        artifact = ctx.load(stage)
+        if isinstance(artifact, dict):
+            dropped.extend(artifact.get('dropped', []))
+            speakers.extend(artifact.get('speaker_review', []))
+    return dropped, speakers
+
+
 def _publish(ctx, out):
     turns, corrected = ctx.load('turns'), ctx.load('correct')
     classification, summary = ctx.load('classify'), ctx.load('summarize')
@@ -39,9 +51,11 @@ def _publish(ctx, out):
     detected = ('uncertain' if language.get('status') == 'uncertain' else
                 language.get('top') if language.get('status') == 'decided' else None)
     recorded = datetime.strptime(ctx.job['recorded_at'], '%Y%m%d-%H%M%S')
+    dropped, speaker_review = _quality_metadata(ctx)
     props, generated, tasks = render.components(
         ctx.job, recorded, turns, corrected['texts'], classification['meta'], summary['text'], corrected['notes'],
-        engines, datetime.now(), processing_language(ctx), detected, output_language(ctx))
+        engines, datetime.now(), processing_language(ctx), detected, output_language(ctx),
+        review_reasons=summary.get('review_reasons', []), dropped=dropped, speaker_review=speaker_review)
     body, _ = notes.new_body(render.header(props, output_language(ctx)), generated, tasks, output_language(ctx))
     draft = ctx.work / 'note.md'
     render.write_atomic(draft, render.frontmatter(props) + body.decode())

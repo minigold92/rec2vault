@@ -16,7 +16,8 @@ const TYPE = {meeting: ['회의', 'Meeting'], status_update: ['현황 공유', '
   lecture: ['강의', 'Lecture'], one_on_one: ['1:1', '1:1'], brainstorm: ['브레인스토밍', 'Brainstorm'], other: ['기타', 'Other']};
 const DIVISION = {work: ['업무', 'Work'], personal: ['개인', 'Personal']};
 const LANGUAGE = {ko: ['한국어', 'Korean'], en: ['영어', 'English'], uncertain: ['불확실', 'Uncertain']};
-const FIELD = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list']};
+const FIELD = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list'], vocabulary: ['단어장', 'word list']};
+const fieldName = (field, i) => (Object.prototype.hasOwnProperty.call(FIELD, field) ? FIELD[field][i] : String(field));
 
 const word = (table, key) => (table[key] ? L(table[key][0], table[key][1]) : '—');
 
@@ -66,14 +67,36 @@ const modelNames = (rows) => {
   return [...names];
 };
 
+// The engine's review codes in words. Same meaning as the "Review needed" lines render.py writes into the note
+// (and the marks quality.py puts in the text: ‘check source’ / ‘근거 확인’, ‘Check numbers’ / ‘숫자 확인’).
+const REASONS = {
+  type_uncertain: ['회의 유형이 확실하지 않아요', 'The meeting type is uncertain'],
+  language_uncertain: ['언어가 섞여 있어요', 'Mixed languages'],
+  summary_review: ['요약에 확인 필요 항목이 있어요', 'The summary has items to check'],
+  asr_dropped: ['받아쓰기에서 환각·반복이 의심되는 구간을 뺐어요. 원음을 확인해 주세요', 'Transcription left out parts that looked like hallucination or repetition. Check the recording'],
+  speaker_review: ['화자 구분을 확인해 주세요 (아주 짧은 화자를 합쳤거나, 화자 수가 상한에 닿았거나, 확신이 낮아요)', 'Check the speaker labels (tiny speakers were merged, the speaker cap was reached or confidence was low)'],
+  unsupported_owner: ['할 일 담당이 인용한 대화록으로 뒷받침되지 않아 ‘근거 확인’을 붙였어요', 'A task owner is not backed by the lines it cites; it is marked ‘check source’'],
+  unsupported_deadline: ['할 일 기한이 인용한 대화록으로 뒷받침되지 않아 ‘근거 확인’을 붙였어요', 'A task deadline is not backed by the lines it cites; it is marked ‘check source’'],
+  unsupported_number: ['숫자나 단위가 인용한 대화록과 달라요. ‘숫자 확인’ 표시를 확인해 주세요', 'Some numbers or units differ from the lines they cite. Check the ‘Check numbers’ marks'],
+  weak_citation: ['일부 문장이 인용한 대화록과 겹치는 낱말이 적어요. 근거를 확인해 주세요', 'Some sentences share few words with the lines they cite. Check the evidence'],
+};
+
 const REASON = (reason) => {
   const miss = /^unknown_citation:(t\d+)$/.exec(reason);
   if (miss) return L(`근거 번호 [?${miss[1]}]이 대화록에 없어요`, `Evidence ID [?${miss[1]}] isn't in the transcript`);
-  if (reason === 'type_uncertain') return L('회의 유형이 확실하지 않아요', 'The meeting type is uncertain');
-  if (reason === 'language_uncertain') return L('언어가 섞여 있어요', 'Mixed languages');
-  if (reason === 'summary_review') return L('요약에 확인 필요 항목이 있어요', 'The summary has items to check');
+  if (Object.prototype.hasOwnProperty.call(REASONS, reason)) return L(...REASONS[reason]);
   if (/failed/.test(reason)) return L('일부 교정이 실패했어요', 'Some corrections failed');
   return String(reason);
+};
+
+// Six chips at most. The engine's own quality flags come first, so a note with many missing evidence IDs
+// cannot push them out of sight; what is left out is counted.
+const reasonChips = (reasons) => {
+  const missing = (reason) => /^unknown_citation:/.test(reason);
+  const ordered = [...reasons.filter((reason) => !missing(reason)), ...reasons.filter(missing)];
+  const rest = ordered.length - 6;
+  return h('p', {class: 'row small'}, ordered.slice(0, 6).map((reason) => chip('warn multi', '!', REASON(reason))),
+    rest > 0 ? chip('line', null, L(`외 ${rest}개`, `+${rest} more`)) : null);
 };
 
 export async function mount({content, jobId}) {
@@ -240,7 +263,7 @@ export async function mount({content, jobId}) {
         return [`${name} · `, cls === 'external' ? chip('warn', '↗', L('외부', 'External'))
           : cls === 'local' ? chip('ok', '✓', L('이 Mac', 'This Mac')) : chip('idle', '?', L('확인 전', 'Unverified')), h('br')];
       }), h('span', {class: 'small muted'}, fields.length
-        ? L(`보낸 것: ${fields.map((f) => (FIELD[f] ? FIELD[f][0] : f)).join(', ')}`, `Sent: ${fields.map((f) => (FIELD[f] ? FIELD[f][1] : f)).join(', ')}`)
+        ? L(`보낸 것: ${fields.map((f) => fieldName(f, 0)).join(', ')}`, `Sent: ${fields.map((f) => fieldName(f, 1)).join(', ')}`)
         : L('보낸 것: 없음', 'Sent: nothing')))];
     };
     const models = modelNames(['diarize', 'transcribe', 'second_pass'].flatMap((stage) => provenance(state.runs, runId, stage)));
@@ -317,7 +340,7 @@ export async function mount({content, jobId}) {
         ? [[fullDate(state.job.recorded_at), state.job.duration_sec ? dur(state.job.duration_sec) : null,
           L(`화자 ${data.speakers.length}명`, `${data.speakers.length} speakers`)].filter(Boolean).join(' · '),
         ' · ', L('원본 ', 'source '), h('code', null, state.job.source_name)] : null),
-      reasons.length ? h('p', {class: 'row small'}, reasons.slice(0, 6).map((reason) => chip('warn', '!', REASON(reason)))) : null);
+      reasons.length ? reasonChips(reasons) : null);
   }
 
   function notFound() {

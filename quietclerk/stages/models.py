@@ -8,6 +8,7 @@ from ..backends import InvalidOutput, ModelMissing
 from ..backends.mlx import MLXBackend, STAGE_MODELS, QWEN_LANGUAGES
 from ..executor import Stage, StageFailure, NoSpeech
 from ..language import context_language, fixed_language, job_settings
+from ..backends.quality import QUALITY_VERSION, vocabulary, replacements
 
 
 def _identities(roles):
@@ -19,7 +20,7 @@ def _identities(roles):
 
 def _params(name, ctx):
     roles = STAGE_MODELS[name]
-    params = {'backend': 'mlx', 'rule_version': 2,
+    params = {'backend': 'mlx', 'rule_version': 3,
               'models': {} if name == 'detect_language' and fixed_language(job_settings(ctx)) else
                         _identities(roles)}
     if name == 'detect_language':
@@ -27,6 +28,11 @@ def _params(name, ctx):
                        'language.default': ctx.settings.get('language.default', 'ko'), 'sampling_rule': 1})
     elif name in ('transcribe', 'second_pass'):
         params['language'] = context_language(ctx)
+        params.update({'vocabulary.terms': vocabulary(ctx.settings),
+                       'vocabulary.replace': replacements(ctx.settings),
+                       'quality_rule_version': QUALITY_VERSION,
+                       'token_budget': {'per_sec': 16, 'overhead': 32},
+                       'chunk_max_sec': 60.0 if name == 'transcribe' else 30.0})
         if name == 'transcribe':
             params.update({'chunk_max_sec': 60.0, 'chunk_rule_version': 2,
                            'alignment': {'language': QWEN_LANGUAGES[params['language']]}})

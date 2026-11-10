@@ -131,12 +131,20 @@ class Executor:
                 virtual_names = {'archive': 'source.m4a', 'source_name': 'source_name'}
                 inputs = {ctx.paths[name].name if name in ctx.paths else virtual_names[name]: ctx.hashes[name]
                           for name in stage.inputs}
-                params = stage.params(ctx) if callable(stage.params) else stage.params
-                ctx.stage_params = params
                 path = work / stage.output
+                allowed = stage.cache and artifacts.cache_allowed(stage.name, run['mode'], claimed['legacy'])
+                hit = None
+                if allowed and run['mode'] == 'resummarize' and stage.name in artifacts.RESUMMARY_KEPT:
+                    # Do not compute params here: that may need models or rules the old run never used.
+                    hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, artifacts.ANY_PARAMS)
+                if hit:
+                    params = hit[1].get('params')
+                else:
+                    params = stage.params(ctx) if callable(stage.params) else stage.params
+                    if allowed:
+                        hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, params)
+                ctx.stage_params = params
                 ctx.record(store.start_stage, stage.name, sent_fields=[])
-                hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, params) if (
-                    stage.cache and artifacts.cache_allowed(stage.name, run['mode'], claimed['legacy'])) else None
                 try:
                     part = Path(str(path) + '.part')
                     if hit:

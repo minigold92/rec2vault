@@ -1,8 +1,19 @@
 """Combine ASR words with diarization segments into speaker turns."""
 
 
+def artifact_rows(value, key='words'):
+    """Read legacy list caches and current metadata envelopes without rewriting."""
+    from .backends import InvalidOutput
+    if isinstance(value, dict):
+        value = value.get(key)
+    if not isinstance(value, list):
+        raise InvalidOutput(f'expected {key} artifact rows')
+    return value
+
+
 def assign_speakers(words, diar):
     """Give each word the diarization speaker it overlaps most; zero-overlap words take the nearest segment."""
+    words, diar = artifact_rows(words), artifact_rows(diar, 'segments')
     out = []
     for w in words:
         best, best_ov = None, 0.0
@@ -35,7 +46,8 @@ def turns(words, diar, gap=1.5):
 
 
 def window_text(words, start, end, pad=5.0) -> str:
-    return " ".join(w["text"].strip() for w in words if start - pad <= w["start"] < end + pad).strip()
+    return " ".join(w["text"].strip() for w in artifact_rows(words)
+                    if start - pad <= w["start"] < end + pad).strip()
 
 
 def stamp(sec: float) -> str:

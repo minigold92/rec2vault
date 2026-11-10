@@ -38,7 +38,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from .. import artifacts, backfill, config, intake, providers, store, store_ops
+from .. import artifacts, backfill, config, intake, providers, selfupdate, store, store_ops
 from ..notes import NoteConflict, migration
 from . import integrations
 from .auth import Auth, COOKIE
@@ -111,12 +111,14 @@ def status_snapshot(runtime):
             stage = con.execute("SELECT * FROM stage_runs WHERE run_id=? AND status='running' ORDER BY started_at DESC LIMIT 1",
                                 (current['active_run_id'],)).fetchone()
         started = stage['started_at'] if stage else (current['claimed_at'] if current else None)
+        update = runtime.updates.snapshot()
         return {'boot_id': runtime.boot, 'engine': store.engine_state(con) or 'ready',
                 'paused': store_ops.paused(con), 'counts': store.counts(con),
                 'current_job': dict(current) if current else None,
                 'stage': dict(stage) if stage else None,
                 'elapsed_sec': max(0, time.time() - started) if started else None,
-                'last_progress': None}
+                'last_progress': None,
+                'update': {key: update[key] for key in ('state', 'behind')}}
 
 
 def audio_response(runtime, con, job_id, range_header):
@@ -494,6 +496,18 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     return JSONResponse(status_snapshot(runtime) | {
                         'providers': integrations.provider_status(settings, provider_registry),
                         'sync': sync_status(settings)})
+                if path == '/api/update' and method == 'GET':
+                    return JSONResponse(runtime.updates.snapshot())
+                if path.startswith('/api/update/') and method == 'POST':
+                    if data:
+                        raise ValueError('expected an empty object')
+                    action = request.path_params['action']
+                    if action == 'check':
+                        return JSONResponse(runtime.updates.check())
+                    if action == 'apply':
+                        return JSONResponse(runtime.updates.apply(con), 202)
+                    if action == 'dismiss':
+                        return JSONResponse(runtime.updates.dismiss())
                 if path == '/api/jobs' and method == 'GET':
                     limit = int(request.query_params.get('limit', 50))
                     if not 1 <= limit <= 200:
@@ -606,6 +620,9 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                 return JSONResponse({'error': 'not found'}, 404)
             except KeyError:
                 return JSONResponse({'error': 'not found'}, 404)
+            except selfupdate.UpdateConflict as exc:
+                return JSONResponse({'error': selfupdate.message('not_available', runtime.settings.get('ui.language')),
+                                     'reason': exc.reason}, 409)
             except store.Conflict as exc:
                 return JSONResponse({'status': exc.status}, 409)
             except LockedSetting as exc:
@@ -673,6 +690,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                for name in ('home', 'jobs', 'notes', 'backlog', 'settings', 'migrate')]
     for path, methods in (
         ('/api/session', ['GET']), ('/api/logout', ['POST']), ('/api/status', ['GET']),
+        ('/api/update', ['GET']), ('/api/update/{action}', ['POST']),
         ('/api/jobs', ['GET']), ('/api/jobs/{job_id}', ['GET']),
         ('/api/jobs/{job_id}/{action}', ['GET', 'POST', 'PUT']),
         ('/api/settings', ['GET', 'PUT']), ('/api/backlog', ['GET']), ('/api/backlog/request', ['POST']),

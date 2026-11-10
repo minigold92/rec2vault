@@ -460,7 +460,51 @@ html[lang="en"] .problem{grid-template-columns:72px minmax(0,1fr)}
 .pointer{cursor:pointer}
 .steps3{grid-template-columns:repeat(3,minmax(0,1fr))}
 
+/* ---------- 15c. Updates: band, dialog, settings card ---------- */
+.banner.ok{background:var(--ok-bg);border-color:#8fd0a2;color:var(--ok)}
+@media (min-width:721px){.banner[data-update] > .actions{flex:none}}
+.banner:focus-visible{border-radius:var(--r)}
+.meter.busy{height:8px;margin-top:var(--s2);background:var(--surface);border-color:#9fb6f5}
+.meter.busy i{width:35%;transform:none;animation:busy 1.4s var(--ease) infinite}
+@keyframes busy{0%{transform:translateX(-100%)}100%{transform:translateX(290%)}}
+.wrapany{overflow-wrap:anywhere}
+.dlg{width:min(640px,calc(100vw - 2 * var(--s4)));max-width:none;max-height:calc(100vh - 2 * var(--s5));padding:0;border:2px solid var(--ink);border-radius:var(--r-lg);background:var(--surface);color:var(--body);box-shadow:5px 5px 0 var(--mint);overflow:hidden}
+.dlg[open]{display:flex;flex-direction:column}
+.dlg::backdrop{background:rgba(30,31,28,.45)}
+.dlg-head{padding:var(--s4) var(--s5);border-bottom:1.5px solid var(--line)}
+.dlg-scroll{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:var(--s3);padding:var(--s4) var(--s5)}
+.dlg-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s2);padding:var(--s3) var(--s5);border-top:1.5px solid var(--line);background:var(--sunken)}
+@media (max-width:720px){
+  .dlg-head,.dlg-scroll,.dlg-foot{padding-inline:var(--s4)}
+}
+
+/* ---------- 15d. Word list (settings) and wrapping reason chips (minutes) ---------- */
+.terms{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.term{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-height:36px;padding:2px 3px 2px var(--s3);border:1.5px solid var(--line);border-radius:var(--pill);background:var(--surface);color:var(--ink);font-size:var(--f-sm);font-weight:600}
+.term-t{min-width:0;overflow-wrap:anywhere;word-break:normal;unicode-bidi:isolate}
+.term .btn{min-height:28px;min-width:28px;padding:0;border-radius:50%}
+.add-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}
+.add-row .input{flex:1 1 200px;width:auto;min-width:0}
+.vrows{display:flex;flex-direction:column;gap:var(--s3)}
+.vrow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto;grid-template-areas:"from arrow to del" "msg msg msg msg";gap:var(--s1) var(--s2);align-items:center}
+.vrow .input{max-width:none;width:100%}
+.vrow .vf{grid-area:from}.vrow .vt{grid-area:to}.vrow .vdel{grid-area:del}.vrow .vmsg{grid-area:msg}
+.vrow .arrow{grid-area:arrow;color:var(--muted);font-weight:800}
+.err-text:empty{display:none}
+.field label.check{font-weight:400;color:var(--body)}
+.term.bad{border-color:var(--err);background:var(--err-bg);color:var(--err)}
+.term i{font-style:normal;font-weight:900;margin-right:4px}
+.chip.multi{white-space:normal;align-items:flex-start;gap:6px;line-height:1.4;padding:6px 10px;border-radius:var(--r-sm);text-align:left}
+.chip.multi i{margin-top:2px}
+@media (max-width:720px){
+  .term{min-height:44px}
+  .term .btn{min-height:36px;min-width:36px}
+  .vrow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"from del" "to del" "msg msg"}
+  .vrow .arrow{display:none}
+}
+
 /* ---------- 16. Motion preferences ---------- */
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
+  .meter.busy i{width:100%;opacity:.5}
 }

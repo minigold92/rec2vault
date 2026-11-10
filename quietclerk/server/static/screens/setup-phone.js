@@ -15,7 +15,7 @@ import {dur, clock, localTime} from '../lib/fmt.js';
 import {footerBar} from './setup.js';
 import {syncEngineControls} from '../lib/shell.js';
 
-const FIELD_NAME = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list']};
+const FIELD_NAME = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list'], vocabulary: ['단어장', 'word list']};
 
 function phonePictures() {
   const shot = (steps) => h('figure', {class: 'ph'}, h('div', {class: 'screen'}, steps.screen), h('figcaption', {class: 'cap'}, h('b', null, steps.n), h('span', null, steps.cap, h('small', null, steps.sub))));

@@ -464,7 +464,7 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
                                   ('-wal', '-shm', '-journal')), paths.settings,
                        paths.root / 'settings.env', paths.root / 'settings.env.migrated',
                        paths.root / 'installation.json', paths.root / 'installation.lock',
-                       paths.agents / (LABEL + '.plist')]
+                       paths.agents / (LABEL + '.plist'), paths.support / 'source.json']
             snapshot = Snapshot(tracked)
             venv.parent.mkdir(parents=True, exist_ok=True)
             adapter.prepare_environment(paths.source, venv)
@@ -483,6 +483,8 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
             (paths.root / 'logs').mkdir(exist_ok=True)
             plist = paths.agents / (LABEL + '.plist')
             _atomic(plist, service_plist(paths, venv, labels))
+            from .selfupdate import record_source
+            record_source(paths.support, paths.source)
             execution_guard.close()  # Hand both execution locks to the new serve.
             service_guard.close()
             new_attempted = True
@@ -584,15 +586,20 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
     and cannot probe launchd registration. Keep the immediate previous venv;
     trim only older UUID-named environments owned by this installer.
     """
-    if locations.get('source') is None and (Path.cwd() / 'pyproject.toml').is_file():
-        locations['source'] = Path.cwd()
+    if locations.get('source') is None:
+        from .selfupdate import read_json
+        identity = read_json(Path(locations.get('support') or SUPPORT) / 'source.json')
+        if identity.get('source'):
+            locations['source'] = identity['source']
+        elif (Path.cwd() / 'pyproject.toml').is_file():
+            locations['source'] = Path.cwd()
     paths = layout(root, updating=True, **locations)
     plist = paths.agents / (LABEL + '.plist')
     # Check the database first so a v1 root receives the migration instruction.
     _require_v2(paths)
     if not plist.is_file():
         raise InstallError('not installed: missing service plist; use quietclerk install')
-    snapshot = Snapshot([plist])
+    snapshot = Snapshot([plist, paths.support / 'source.json'])
     try:
         service = plistlib.loads(snapshot.files[plist][0])
         if not isinstance(service, dict):
@@ -647,6 +654,8 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             service['ProgramArguments'] = [str(venv / 'bin/python'), *argv[1:]]
             _atomic(plist, plistlib.dumps(service), snapshot.files[plist][1])
             point('plist')
+            from .selfupdate import record_source
+            record_source(paths.support, paths.source)
             guard.close()
             new_attempted = True
             started = time.time_ns()

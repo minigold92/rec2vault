@@ -10,9 +10,10 @@ export const code = (text) => h('span', {class: 'code-tag'}, text);
 
 // A control that needs the engine is marked data-engine; the shell disables it while the engine is
 // unreachable. A control the API cannot serve yet is rendered disabled with its reason (.why) beside it.
+// `act` names what the button does (data-act): screens that re-render use it to put the keyboard focus back.
 export function btn(o) {
   const cls = ['btn', o.kind || '', o.small ? 'sm' : ''].filter(Boolean).join(' ');
-  const common = {class: cls, id: o.id, 'aria-label': o.aria, 'aria-describedby': o.describedby,
+  const common = {class: cls, id: o.id, 'aria-label': o.aria, 'aria-describedby': o.describedby, 'data-act': o.act,
     'data-engine': o.engine ? '' : null, on: o.on};
   const kids = [o.icon ? icon(o.icon) : null, o.label];
   if (o.href && !o.disabled) return h('a', {...common, href: o.href}, ...kids);

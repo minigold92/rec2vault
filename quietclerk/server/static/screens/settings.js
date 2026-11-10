@@ -1,7 +1,10 @@
 // Settings: contract §3.3 keys with their effective value, file value and lock (design: docs/ui/settings.html).
 // Data: GET/PUT /api/settings (flat dotted keys; one invalid key rejects the whole save), GET /api/providers,
-// POST /api/logout, GET /api/notes/migration (how many old-format notes are left). Not in the API yet: the
-// list of deleted recordings and restoring them, so that is shown as unavailable with the endpoint named.
+// POST /api/logout, GET /api/notes/migration (how many old-format notes are left), and the update state
+// (lib/update.js: Check now, installed version). Not in the API yet: the list of deleted recordings and
+// restoring them, so that is shown as unavailable with the endpoint named.
+// The word list (contract §10.7) edits vocabulary.terms, vocabulary.replace and the `vocabulary` entry of
+// providers.consent through the same drafts, save bar and 400 display as every other key.
 import {h, icon, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {get, put, post} from '../lib/api.js';
@@ -9,6 +12,7 @@ import {btn, chip, code, banner, announce} from '../lib/ui.js';
 import {providerLabel} from '../lib/jobs.js';
 import {problemBanner} from '../lib/cards.js';
 import {setTitle, syncEngineControls, langSwitch} from '../lib/shell.js';
+import {updateCheckControl, updateVersions} from '../lib/update.js';
 
 const ENV = {root: 'QC_ROOT', inbox: 'QC_INBOX', output: 'QC_OUTPUT', since: 'QC_SINCE', min_duration_sec: 'QC_MIN_DURATION_SEC',
   stable_sec: 'QC_STABLE_SEC', 'language.mode': 'QC_LANGUAGE', 'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT'};
@@ -19,7 +23,120 @@ const APPLY = {
   restart: () => L('엔진 다시 시작 후 적용', 'Applies after engine restart'),
   now: () => L('바로 적용', 'Applies now'),
 };
-const FIELD_NAMES = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list']};
+const FIELD_NAMES = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list'], vocabulary: ['단어장', 'word list']};
+
+// ---- word list rules (contract §10.7): up to 200 entries of 1-40 characters. The engine counts characters (not UTF-16
+// units) and refuses every Unicode "other" character (control, zero-width, bidirectional, private use), while the save
+// check only refuses ASCII and C1 controls. The stricter rule is applied here so nothing the engine would refuse is sent.
+const TERMS = 'vocabulary.terms';
+const FIXES = 'vocabulary.replace';
+const MAX_ENTRIES = 200;
+const MAX_CHARS = 40;
+const OTHER = /\p{C}/u;
+const CONSENT_FIELDS = ['transcript', 'source_name', 'project_list', 'vocabulary'];
+const isVocabulary = (key) => key === TERMS || key === FIXES;
+const size = (text) => Array.from(text).length;
+
+// null when the trimmed entry is fine, else the reason.
+function entryProblem(text) {
+  if (!text) return {why: 'empty'};
+  if (OTHER.test(text)) return {why: 'chars'};
+  const n = size(text);
+  return n > MAX_CHARS ? {why: 'long', n} : null;
+}
+
+const problemText = ({why, n}) => ({
+  empty: () => L('비어 있어요.', 'It\'s empty.'),
+  chars: () => L('제어문자나 보이지 않는 글자는 쓸 수 없어요.', 'Control and invisible characters aren\'t allowed.'),
+  long: () => L(`${n}자예요. ${MAX_CHARS}자까지 쓸 수 있어요.`, `That is ${n} characters; the limit is ${MAX_CHARS}.`),
+  half: () => L('틀린 표기와 바른 표기를 모두 적어 주세요.', 'Fill in both the wrong and the correct spelling.'),
+  conflict: () => L('같은 틀린 표기에 바른 표기가 둘이에요. 하나만 남겨 주세요.', 'This wrong spelling has two different corrections. Keep one.'),
+}[why]());
+
+// Several entries at once: line breaks or commas. Pieces are trimmed and empty ones vanish.
+const BREAKS = /[\r\n\v\f\u0085\u2028\u2029,;，；、]/u;
+const splitEntries = (raw) => String(raw).split(/[\r\n\v\f\u0085\u2028\u2029]+|\s*[,;，；、]\s*/u).map((piece) => piece.trim()).filter(Boolean);
+
+// Adds what can be added to `list` (nothing is dropped silently): `keep` are the pieces to fix and try again.
+function addEntries(list, raw) {
+  const next = [...list];
+  const out = {added: 0, dup: 0, full: 0, bad: [], keep: []};
+  for (const piece of splitEntries(raw)) {
+    const bad = entryProblem(piece);
+    if (bad) {
+      out.bad.push(bad);
+      out.keep.push(piece);
+    } else if (next.includes(piece)) {
+      out.dup += 1;
+    } else if (next.length >= MAX_ENTRIES) {
+      out.full += 1;
+      out.keep.push(piece);
+    } else {
+      next.push(piece);
+      out.added += 1;
+    }
+  }
+  return {next, ...out};
+}
+
+// What to say after an add (a function, so it follows the display language): nothing when everything went in.
+function addSaid(out) {
+  const total = out.added + out.dup + out.full + out.bad.length;
+  if (!total) return () => L('낱말을 적어 주세요.', 'Type a word first.');
+  const skipped = total - out.added;
+  if (!skipped) return null;
+  if (total === 1) {
+    if (out.bad.length) return () => problemText(out.bad[0]);
+    if (out.dup) return () => L('이미 있어요.', 'Already in the list.');
+    return () => L(`${MAX_ENTRIES}개를 모두 채웠어요. 하나를 지우면 더 넣을 수 있어요.`, `The list is full (${MAX_ENTRIES}). Remove one to add more.`);
+  }
+  return () => {
+    const why = [out.bad.length ? L(`길이·글자 문제 ${out.bad.length}`, `${out.bad.length} with a length or character problem`) : null,
+      out.dup ? L(`중복 ${out.dup}`, `${out.dup} duplicate${out.dup === 1 ? '' : 's'}`) : null,
+      out.full ? L(`자리 없음 ${out.full}`, `${out.full} over the limit`) : null].filter(Boolean).join(', ');
+    return L(`${out.added}개를 넣고 ${skipped}개는 건너뛰었어요 (${why}).`, `Added ${out.added}, skipped ${skipped} (${why}).`);
+  };
+}
+
+// One verdict per row of the replacement editor (null = fine). A row left completely empty is not a problem.
+function fixIssues(rows) {
+  const targets = new Map();   // wrong spelling -> the distinct corrections typed for it
+  for (const row of rows) {
+    const from = row.from.trim(), to = row.to.trim();
+    if (!from || !to) continue;
+    if (!targets.has(from)) targets.set(from, new Set());
+    targets.get(from).add(to);
+  }
+  return rows.map((row) => {
+    const from = row.from.trim(), to = row.to.trim();
+    if (!from && !to) return null;
+    if (!from || !to) return {why: 'half'};
+    return entryProblem(from) || entryProblem(to) || (targets.get(from).size > 1 ? {why: 'conflict'} : null);
+  });
+}
+
+// The pairs the server gets: the rows that are fine, in the order typed, an identical pair once. Key order matches
+// the server's own answer so an unchanged list compares equal.
+function fixPairs(rows, issues) {
+  const pairs = [];
+  rows.forEach((row, i) => {
+    if (issues[i] || (!row.from.trim() && !row.to.trim())) return;
+    const pair = {from: row.from.trim(), to: row.to.trim()};
+    if (!pairs.some((p) => p.from === pair.from && p.to === pair.to)) pairs.push(pair);
+  });
+  return pairs;
+}
+
+// The server's reasons for a list it refuses, in words (anything else is shown as it came).
+const SERVER_WHY = [
+  [/at most/, () => L(`최대 ${MAX_ENTRIES}개까지 둘 수 있어요.`, `At most ${MAX_ENTRIES} entries are allowed.`)],
+  [/control characters/, () => L(`${MAX_CHARS}자까지, 제어문자 없이 적어 주세요.`, `Up to ${MAX_CHARS} characters, with no control characters.`)],
+  [/conflicting/, () => L('같은 틀린 표기에 바른 표기가 둘이에요. 하나만 남겨 주세요.', 'A wrong spelling has two different corrections. Keep one.')],
+];
+const serverWhy = (message) => {
+  const hit = SERVER_WHY.find(([pattern]) => pattern.test(message));
+  return hit ? hit[1]() : message;
+};
 
 export async function mount({content}) {
   setTitle('설정 · QuietClerk', 'Settings · QuietClerk');
@@ -171,6 +288,224 @@ export async function mount({content}) {
     syncEngineControls(providersHost);
   }
 
+  // ---- word list (contract §10.7): the names and terms, the exact fixes, and which engines may receive the list. Each is a
+  // draft like any other key. Whatever is typed (or came from the file) is only ever put in the page as text.
+  const termsHost = h('div', {class: 'slot'});
+  const fixesHost = h('div', {class: 'slot'});
+  const consentHost = h('div', {class: 'slot'});
+  const typed = {add: '', said: null};   // the add box, and the last thing it said (a function: it follows the language)
+  let termsUi = null;                    // the parts of the terms editor that change without redrawing the box
+  let fixUi = null;
+  let fixRows = null;                    // [{from, to, touched}] as typed: half-filled rows live here, not in the draft
+  let fixRefs = [];                      // the inputs and message of each drawn row, repainted in place while typing
+
+  const termList = () => (Array.isArray(value(TERMS)) ? value(TERMS).map(String) : []);
+  const rows = () => {
+    if (!fixRows) {
+      const list = Array.isArray(value(FIXES)) ? value(FIXES) : [];
+      fixRows = list.filter((pair) => pair && typeof pair === 'object').map((pair) => ({from: String(pair.from ?? ''), to: String(pair.to ?? ''), touched: false}));
+    }
+    return fixRows;
+  };
+  const off = (el, on) => {
+    el.disabled = on;
+    if (on) el.setAttribute('aria-disabled', 'true');
+    else el.removeAttribute('aria-disabled');
+  };
+  // The red line under a field is about the last save; once that list is edited it no longer applies.
+  const dropError = (id) => {
+    const el = document.getElementById(`${id}-err`);
+    if (el) el.remove();
+  };
+
+  function termChip(term, index) {
+    const bad = !!entryProblem(term.trim());
+    return h('li', {class: 'term' + (bad ? ' bad' : '')}, bad ? h('i', {'aria-hidden': 'true'}, '!') : null, h('span', {class: 'term-t'}, term),
+      btn({small: true, kind: 'ghost', engine: true, icon: 'x', aria: L(`삭제: ${term}`, `Remove: ${term}`), disabled: isLocked(TERMS), on: {click: () => removeTerm(index)}}));
+  }
+
+  function refreshTerms() {
+    const terms = termList();
+    const full = terms.length >= MAX_ENTRIES;
+    const said = typed.said ? typed.said() : '';
+    replace(termsUi.list, terms.map(termChip));
+    termsUi.list.hidden = !terms.length;
+    termsUi.empty.hidden = terms.length > 0;
+    termsUi.warn.hidden = !terms.some((term) => entryProblem(term.trim()));
+    termsUi.count.textContent = `${terms.length} / ${MAX_ENTRIES}`;
+    termsUi.why.hidden = !full;
+    off(termsUi.add, full || isLocked(TERMS));
+    termsUi.said.textContent = said;
+    termsUi.input.value = typed.add;
+    if (said) termsUi.input.setAttribute('aria-invalid', 'true');
+    else termsUi.input.removeAttribute('aria-invalid');
+    syncEngineControls(termsHost);
+  }
+
+  function addTerms(raw, fromBox) {
+    const out = addEntries(termList(), raw);
+    if (out.added) {
+      setDraft(TERMS, out.next);
+      dropError('f-vt');
+    }
+    if (fromBox) typed.add = out.keep.join(', ');
+    typed.said = addSaid(out);
+    refreshTerms();
+    if (out.added) announce(L(`추가했어요 (${out.next.length}개)`, `Added (${out.next.length} in the list)`));
+    else if (typed.said) announce(typed.said());
+    termsUi.input.focus();
+  }
+
+  function removeTerm(index) {
+    setDraft(TERMS, termList().filter((_, i) => i !== index));
+    typed.said = null;   // what the last add said (e.g. "full") no longer holds once something is removed
+    dropError('f-vt');
+    refreshTerms();
+    const buttons = termsUi.list.querySelectorAll('button');
+    (buttons[index] || buttons[index - 1] || termsUi.input).focus();
+    announce(L(`삭제했어요 (${termList().length}개 남음)`, `Removed (${termList().length} left)`));
+  }
+
+  // Several entries pasted at once (a column from a sheet, a comma list) go in as they are; a single entry is typed as usual.
+  function pasteTerms(event) {
+    const text = event.clipboardData ? event.clipboardData.getData('text') : '';
+    if (!BREAKS.test(text)) return;
+    event.preventDefault();
+    addTerms(text, false);
+  }
+
+  function renderTerms() {
+    const locked = isLocked(TERMS);
+    termsUi = {
+      input: h('input', {class: 'input', id: 'f-vt', placeholder: L('예: 책마루', 'e.g. Kubernetes'), disabled: locked, autocomplete: 'off', spellcheck: 'false',
+        'aria-describedby': 'f-vt-said', 'data-engine': locked ? null : '',
+        on: {input: (event) => { typed.add = event.target.value; }, paste: pasteTerms}}),
+      list: h('ul', {class: 'terms', 'aria-label': L('단어장 낱말', 'Word list entries')}),
+      empty: h('p', {class: 'small muted'}, L('아직 없어요. 자주 틀리게 적히는 이름이나 용어를 넣어 보세요.', 'Nothing yet. Add names or terms that often come out wrong.')),
+      warn: h('p', {class: 'err-text small', id: 'f-vt-marked'}, L('! 표시한 낱말에는 쓸 수 없는 글자가 있어요. 지우고 다시 넣어 주세요.', 'Entries marked ! contain characters that aren\'t allowed. Remove them and add them again.')),
+      count: h('span', {class: 'small muted num'}),
+      why: h('span', {class: 'why', id: 'f-vt-full'}, L(`${MAX_ENTRIES}개를 모두 채웠어요. 하나를 지우면 더 넣을 수 있어요.`, `The list is full (${MAX_ENTRIES}). Remove one to add more.`)),
+      said: h('p', {class: 'err-text small', id: 'f-vt-said'}),
+      add: btn({type: 'submit', small: true, engine: true, icon: 'plus', label: L('추가', 'Add')}),
+    };
+    replace(termsHost, termsUi.empty, termsUi.list, termsUi.warn,
+      h('form', {class: 'add-row', 'aria-label': L('낱말 추가', 'Add an entry'), on: {submit: (event) => { event.preventDefault(); addTerms(typed.add, true); }}}, termsUi.input, termsUi.add),
+      termsUi.said, h('div', {class: 'row'}, termsUi.count, termsUi.why),
+      h('p', {class: 'small muted'}, L('쉼표나 줄바꿈으로 나누면 여러 개를 한 번에 넣어요. 같은 낱말은 한 번만 남아요.', 'Separate entries with commas or line breaks to add several at once. A repeated entry is kept once.')));
+    refreshTerms();
+  }
+
+  // The wrong -> correct rows. The inputs are never redrawn while typing: only their invalid marks and message change.
+  function paintFixes() {
+    const list = rows();
+    const issues = fixIssues(list);
+    fixRefs.forEach((ref, i) => {
+      // "fill in both" waits until the row was left; every other problem shows at once
+      const issue = issues[i] && (issues[i].why !== 'half' || list[i].touched) ? issues[i] : null;
+      const marks = {from: !!issue && (issue.why !== 'half' || !list[i].from.trim()), to: !!issue && (issue.why !== 'half' || !list[i].to.trim())};
+      for (const [name, bad] of Object.entries(marks)) {
+        if (bad) ref[name].setAttribute('aria-invalid', 'true');
+        else ref[name].removeAttribute('aria-invalid');
+      }
+      ref.said.textContent = issue ? problemText(issue) : '';
+    });
+  }
+
+  const syncFixes = () => setDraft(FIXES, fixPairs(rows(), fixIssues(rows())));
+
+  function editFix(i, name, text) {
+    rows()[i][name] = text;
+    dropError('f-vr');
+    syncFixes();
+    paintFixes();
+  }
+
+  function addFix() {
+    rows().push({from: '', to: '', touched: false});
+    dropError('f-vr');
+    renderFixes();
+    fixRefs[fixRefs.length - 1].from.focus();
+  }
+
+  function removeFix(i) {
+    rows().splice(i, 1);
+    dropError('f-vr');
+    syncFixes();
+    renderFixes();
+    const next = fixRefs[i] || fixRefs[i - 1];
+    (next ? next.from : fixUi.add).focus();
+    announce(L(`행을 지웠어요 (${rows().length}개 남음)`, `Row removed (${rows().length} left)`));
+  }
+
+  function renderFixes() {
+    const list = rows();
+    const locked = isLocked(FIXES);
+    const full = list.length >= MAX_ENTRIES;
+    fixRefs = [];
+    const items = list.map((row, i) => {
+      const msgId = `f-vr-${i}-m`;
+      const side = (name, cls, label, example) => h('input', {class: `input ${cls}`, id: !i && name === 'from' ? 'f-vr' : null, value: row[name], placeholder: example,
+        autocomplete: 'off', spellcheck: 'false', disabled: locked, 'aria-label': label, 'aria-describedby': msgId, 'data-engine': locked ? null : '',
+        on: {input: (event) => editFix(i, name, event.target.value)}});
+      const from = side('from', 'vf', L(`틀린 표기 ${i + 1}`, `Wrong spelling ${i + 1}`), L('틀린 표기 (예: 책 마루)', 'Wrong spelling (e.g. cubernetes)'));
+      const to = side('to', 'vt', L(`바른 표기 ${i + 1}`, `Correct spelling ${i + 1}`), L('바른 표기 (예: 책마루)', 'Correct spelling (e.g. Kubernetes)'));
+      const said = h('p', {class: 'err-text small vmsg', id: msgId});
+      fixRefs.push({from, to, said});
+      return h('li', {class: 'vrow', on: {focusout: (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) { row.touched = true; paintFixes(); }
+      }}}, from, h('span', {class: 'arrow', 'aria-hidden': 'true'}, '→'), to,
+      h('span', {class: 'vdel'}, btn({small: true, kind: 'ghost', engine: true, icon: 'x', disabled: locked, aria: L(`행 ${i + 1} 삭제`, `Remove row ${i + 1}`), on: {click: () => removeFix(i)}})), said);
+    });
+    fixUi = {add: btn({small: true, engine: true, icon: 'plus', disabled: full || locked, label: L('행 추가', 'Add a row'), on: {click: addFix}})};
+    replace(fixesHost,
+      list.length ? h('ul', {class: 'vrows', 'aria-label': L('틀린 표기를 바른 표기로', 'Wrong spelling to correct spelling')}, items) : h('p', {class: 'small muted'}, L('아직 없어요.', 'Nothing yet.')),
+      h('div', {class: 'row'}, fixUi.add, h('span', {class: 'small muted num'}, `${list.length} / ${MAX_ENTRIES}`),
+        full ? h('span', {class: 'why'}, L(`${MAX_ENTRIES}개를 모두 채웠어요. 한 줄을 지우면 더 넣을 수 있어요.`, `The list is full (${MAX_ENTRIES}). Remove a row to add more.`)) : null),
+      h('p', {class: 'small muted'}, L('한 낱말 단위로 바꾸고, 뒤에 조사가 붙어도 돼요 (책 마루가 → 책마루가). 같은 틀린 표기에 바른 표기를 둘 줄 수는 없어요.',
+        'Whole words are replaced, and a Korean particle after the word is fine (책 마루가 → 책마루가). One wrong spelling can have only one correction.')));
+    paintFixes();
+    syncEngineControls(fixesHost);
+  }
+
+  // Which engines get the list: the `vocabulary` entry of providers.consent, for the engines that are on.
+  function setSendVocabulary(name, on) {
+    const consent = {...(value('providers.consent') || {})};
+    const next = new Set(consent[name] || []);
+    if (on) next.add('vocabulary');
+    else next.delete('vocabulary');
+    consent[name] = CONSENT_FIELDS.filter((field) => next.has(field));
+    setDraft('providers.consent', consent);
+    dropError('f-vc');
+    renderProviders();
+  }
+
+  function renderConsent() {
+    const order = value('providers.order') || [];
+    const consent = value('providers.consent') || {};
+    const said = (can, on) => (!can ? L('먼저 설치 마법사 4단계에서 이 엔진에 대화록을 보내도록 허용해야 해요.', 'First allow the transcript for this engine in setup step 4.')
+      : on ? L('교정·분류·요약 때 단어장도 함께 보내요.', 'The word list is sent along when correcting, classifying and summarising.') : L('단어장 없이 교정해요.', 'Corrects without the word list.'));
+    replace(consentHost,
+      order.length ? h('div', {class: 'stack tight', role: 'group', 'aria-label': L('단어장을 보낼 엔진', 'Engines that get the word list')}, order.map((name) => {
+        const list = consent[name] || [];
+        const can = list.includes('transcript');
+        const status = h('span', {class: 'muted'}, said(can, list.includes('vocabulary')));
+        return h('label', {class: 'check small'},
+          h('input', {type: 'checkbox', checked: list.includes('vocabulary'), disabled: !can, 'data-engine': can ? '' : null,
+            on: {change: (event) => { setSendVocabulary(name, event.target.checked); status.textContent = said(true, event.target.checked); }}}),
+          h('span', null, h('b', {class: 'ink'}, providerLabel(name)), ' ', code('vocabulary'), h('br'), status));
+      })) : h('p', {class: 'small muted'}, L('켜 둔 요약 엔진이 없어요. 엔진을 켜면 여기서 단어장을 보낼지 고를 수 있어요. ', 'No summary engine is on. Once one is, you can choose here whether it gets the word list. '),
+        h('a', {href: '/setup/4'}, L('요약 엔진 켜기', 'Turn on an engine'))),
+      h('p', {class: 'small muted'}, L('받아쓰기는 이 Mac 안에서 하니 단어장을 늘 써요. 교정·분류·요약 엔진에는 동의한 곳에만 보내고, 동의하지 않으면 단어장 없이 교정해요. 틀린 표기 → 바른 표기는 어디에도 보내지 않아요.',
+        'Transcription runs on this Mac and always uses the word list. Correction, classification and summary engines get it only if you agree; otherwise they work without it. Wrong → correct spellings are never sent anywhere.')));
+    syncEngineControls(consentHost);
+  }
+
+  function renderVocabulary() {
+    renderTerms();
+    renderFixes();
+    renderConsent();
+  }
+
   // ---- sections
   function section(id, title, ...body) {
     return h('section', {class: 'card', id, 'aria-labelledby': `${id}-h`}, h('div', {class: 'card-head'}, h('h2', {id: `${id}-h`}, title)), h('div', null, body));
@@ -196,6 +531,18 @@ export async function mount({content}) {
         segField('language.default', 'f-ld', L('애매할 때 쓸 언어', 'Fallback language'), L('자동 감지가 한쪽으로 정해지지 않을 때', 'Used when detection is inconclusive'), 'rec',
           [['ko', L('한국어', 'Korean')], ['en', L('영어', 'English')]]),
         field({id: 'f-ui', key: 'ui.language', label: L('화면 언어', 'Display language'), help: L('이 화면에만 적용돼요', 'Affects this screen only'), apply: 'now', control: h('div', {id: 'f-ui'}, langSwitch())})),
+      section('s-vocab', L('단어장', 'Word list'),
+        h('div', {class: 'stack small ink'},
+          h('p', null, L('자주 틀리게 받아 적는 이름·용어를 적어 두세요. 받아쓰기가 그 철자를 따라가고, 교정할 때도 그 철자를 써요.',
+            'List names and terms that often come out wrong. Transcription follows those spellings, and so does correction.')),
+          h('p', {class: 'muted'}, L('다음 녹음부터 적용돼요. 이미 만든 회의록에 적용하려면 그 회의록에서 ‘처음부터 다시’를 눌러요. ‘요약만 다시’는 새 단어장을 쓰지 않아요.',
+            'Applies from the next recording. To apply it to minutes you\'ve already made, press ‘Redo from scratch’ on that note; ‘Re-summarize only’ doesn\'t pick up the new word list.'))),
+        field({id: 'f-vt', key: TERMS, label: L('이름·용어', 'Names & terms'), help: L('최대 200개 · 한 개당 40자까지', 'Up to 200 entries · 40 characters each'),
+          apply: 'rec', locked: isLocked(TERMS), control: termsHost}),
+        field({id: 'f-vr', key: FIXES, label: L('틀린 표기 → 바른 표기', 'Wrong → correct spelling'), help: L('받아쓰기 직후 이 Mac에서만 바꿔요', 'Applied on this Mac right after transcription'),
+          apply: 'rec', locked: isLocked(FIXES), control: fixesHost}),
+        field({id: 'f-vc', key: 'providers.consent', label: L('단어장을 보낼 엔진', 'Engines that get the word list'), help: L('동의한 엔진에만 보내요', 'Only engines you allow'),
+          apply: 'rec', control: consentHost})),
       section('providers', L('요약 엔진', 'Summary engines'),
         switchField('providers.local_only', 'f-lo', L('로컬 전용 모드', 'Local-only mode'),
           L('켜면 이 Mac 밖으로 글자를 보내지 않고, 외부로 넘어가는 대체도 막아요. 로컬로 확인된 엔진이 없으면 요약 단계에서 기다리게 돼요.', 'When on, no text leaves this Mac and external fallback is blocked. If no engine is verified local, jobs wait at summarising.'), 'rec'),
@@ -220,6 +567,12 @@ export async function mount({content}) {
           control: chip('idle', '—', L('꺼짐 · 설정 없음', 'Off · no setting'))}),
         field({id: 'f-out2', key: 'logout', label: L('이 브라우저에서 로그아웃', 'Sign out of this browser'), help: L('다시 열려면 터미널에서 quietclerk open을 실행해요.', 'Run quietclerk open in Terminal to come back.'),
           control: btn({small: true, engine: true, label: L('로그아웃', 'Sign out'), on: {click: logout}})})),
+      section('s-upd', L('업데이트', 'Updates'),
+        switchField('updates.check', 'f-uc', L('하루 한 번 새 버전 확인', 'Check for a new version once a day'),
+          L('GitHub에 새 버전이 있는지만 묻고, 녹음·회의록은 보내지 않아요', 'Only asks GitHub whether a new version exists; no recordings or minutes are sent'), 'now'),
+        field({id: 'f-ucheck', key: 'update_check', label: L('직접 확인', 'Manual check'),
+          help: L('눌러서 바로 물어봐요. 하루 한 번 확인이 꺼져 있어도 돼요', 'Asks right away, even when the daily check is off'), control: updateCheckControl('f-ucheck')}),
+        field({id: 'f-uver', key: 'update_version', label: L('버전', 'Version'), control: updateVersions('f-uver')})),
       section('consent', L('녹음 동의와 회사 정책', 'Recording consent & company policy'),
         h('div', {class: 'stack small ink'},
           h('p', null, L('녹음 전에 함께 있는 사람에게 알리고 동의를 받아 주세요. 녹음에 대한 법은 나라와 상황마다 달라요. QuietClerk는 녹음이 허용되는지 판단하지 않아요.', 'Tell everyone present and get their consent before recording. Recording laws differ by country and situation. QuietClerk doesn\'t judge whether a recording is allowed.')),
@@ -293,7 +646,7 @@ export async function mount({content}) {
         h('b', {class: 'ink', 'aria-live': 'polite'}, keys.length ? L(`바꾼 항목 ${keys.length}개`, `${keys.length} change${keys.length === 1 ? '' : 's'}`) : L('바꾼 항목이 없어요', 'No changes')),
         h('span', {class: 'small muted'}, L('처리 중인 녹음은 시작할 때의 설정으로 끝까지 가요.', 'A recording already in progress finishes with the settings it started with.')),
         h('span', {class: 'spacer'}),
-        btn({small: true, engine: true, disabled: !keys.length, label: L('되돌리기', 'Revert'), on: {click: () => { state.draft = {}; state.errors = {}; state.notice = null; render(); }}}),
+        btn({small: true, engine: true, disabled: !keys.length, label: L('되돌리기', 'Revert'), on: {click: () => { state.draft = {}; state.errors = {}; state.notice = null; fixRows = null; typed.add = ''; typed.said = null; render(); }}}),
         btn({small: true, kind: 'primary', engine: true, disabled: !keys.length, label: L('저장', 'Save'), on: {click: save}})),
       h('p', {class: 'small muted'}, L('저장하면 settings.toml을 통째로 다시 써요. 파일에 직접 단 주석은 남지 않아요.', 'Saving rewrites settings.toml entirely; comments you added are not kept.'))));
     syncEngineControls(barHost);
@@ -314,6 +667,12 @@ export async function mount({content}) {
         body[key] = v;
       }
     }
+    // The word list editors: rows that are half-filled or invalid, and entries the engine would refuse, are shown instead of sent.
+    for (const row of rows()) row.touched = true;
+    if (fixIssues(rows()).some(Boolean)) state.errors[FIXES] = L('고쳐야 할 행이 있어요. 빨간 행을 고치거나 지워 주세요.', 'Some rows need fixing. Correct or remove the ones in red.');
+    if (keys.includes(TERMS) && state.draft[TERMS].some((term) => entryProblem(term.trim()))) {
+      state.errors[TERMS] = L('쓸 수 없는 글자가 든 낱말이 있어요. ! 표시한 낱말을 지우고 다시 넣어 주세요.', 'Some entries contain characters that aren\'t allowed. Remove the ones marked ! and add them again.');
+    }
     if (Object.keys(state.errors).length) {
       state.notice = banner('err', '!', [h('b', null, L('저장하지 못했어요.', 'Not saved.')), ' ',
         L(`빨간 항목 ${Object.keys(state.errors).length}개를 고쳐 주세요. 나머지는 아직 바뀌지 않았어요.`, `Fix the ${Object.keys(state.errors).length} item(s) in red. Nothing else has changed yet.`)]);
@@ -323,13 +682,14 @@ export async function mount({content}) {
     try {
       state.server = await put('/api/settings', body);
       state.draft = {};
+      fixRows = null;
       state.notice = banner('info', '✓', [h('b', null, L('저장했어요.', 'Saved.'))]);
       announce(L('저장했어요.', 'Saved.'));
     } catch (error) {
       const field = error.body && error.body.field;
       if ((error.status === 400 || error.status === 409) && field) {
         state.errors[field] = error.status === 409 ? L('환경 변수로 정해져 있어 바꿀 수 없어요.', 'Fixed by an environment variable; it can\'t be changed.')
-          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : String(error.body.error);
+          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : isVocabulary(field) ? serverWhy(String(error.body.error)) : String(error.body.error);
         state.notice = banner('err', '!', [h('b', null, L('저장하지 못했어요.', 'Not saved.')), ' ',
           L('빨간 항목 1개를 고쳐 주세요. 나머지는 아직 바뀌지 않았어요.', 'Fix the 1 item in red. Nothing else has changed yet.'), ' ', code(`${error.status} {field: ${field}}`)]);
       } else {
@@ -349,11 +709,12 @@ export async function mount({content}) {
       h('div', {class: 'topbar'}, h('h1', null, L('설정', 'Settings'))),
       state.notice,
       h('nav', {class: 'row', 'aria-label': L('설정 구역', 'Settings sections')}, [
-        ['s-out', L('회의록', 'Notes')], ['s-rec', L('처리할 녹음', 'Recordings')], ['s-lang', L('언어', 'Language')], ['providers', L('요약 엔진', 'Summary engines')],
-        ['retention', L('저장·삭제', 'Storage & deletion')], ['s-ui', L('화면', 'Screen')], ['consent', L('녹음 동의', 'Recording consent')]]
+        ['s-out', L('회의록', 'Notes')], ['s-rec', L('처리할 녹음', 'Recordings')], ['s-lang', L('언어', 'Language')], ['s-vocab', L('단어장', 'Word list')], ['providers', L('요약 엔진', 'Summary engines')],
+        ['retention', L('저장·삭제', 'Storage & deletion')], ['s-ui', L('화면', 'Screen')], ['s-upd', L('업데이트', 'Updates')], ['consent', L('녹음 동의', 'Recording consent')]]
         .map(([id, text]) => h('a', {class: 'chip line', href: `#${id}`}, text))),
       sections(), barHost);
     renderProviders();
+    renderVocabulary();
     renderBar();
     syncEngineControls(content);
     if (keep && document.getElementById(keep)) document.getElementById(keep).focus();

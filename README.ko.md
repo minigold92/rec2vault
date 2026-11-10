@@ -48,10 +48,13 @@ AI 녹음기는 전용 기기에 클라우드 받아쓰기와 월 분량 요금�
 
 - **손댈 일이 없습니다.** 녹음을 저장하면 끝입니다. 폰이 파일을 보내고, Mac은 파일이 더 바뀌지 않을 때
   가져가 회의록을 만듭니다. 실패한 단계는 다시 시도하고, 같은 녹음을 두 번 처리하지 않습니다.
+- **받아쓰기 안전망과 단어장.** 같은 말이 반복되는 오류와 무음 구간에서 지어낸 문구를 잘라내고 목록으로
+  남깁니다. 단어장에 넣은 이름·용어는 더 잘 알아듣고, 자주 틀리는 표기는 자동으로 고칩니다.
 - **화자와 시각.** 화자 구분(NVIDIA Nemotron 3)과 받아쓰기(Qwen3-ASR 1.7B와 단어 정렬, Whisper 2차
   받아쓰기)를 MLX로 Apple Silicon에서 돌립니다.
 - **짧고 확인하기 쉬운 회의록.** 핵심 요약, 결정 사항, 미해결, 담당자·기한이 붙은 할 일. 문장마다
-  `[[#^t12|01:23]]` 같은 링크가 있어 근거 대화를 바로 확인할 수 있습니다.
+  `[[#^t12|01:23]]` 같은 링크가 있어 근거 대화를 바로 확인할 수 있습니다. 담당·기한·숫자는 그 줄과
+  코드로 대조해, 근거 줄에 없는 것은 확인 필요로 표시하고 "다음 주 금요일"은 날짜로 바꿉니다.
 - **고친 내용은 지켜집니다.** Obsidian에서 제목을 바꾸고 할 일을 체크하고 메모를 써도, 요약을 다시
   만들 때 엔진이 쓴 부분만 바뀝니다.
 - **한국어와 영어.** 녹음마다 언어를 감지하고, 회의 언어(또는 정해 둔 언어)로 회의록을 씁니다.
@@ -100,6 +103,7 @@ flowchart LR
 | 대화록 글자 | 켜 둔 엔진에, 동의한 항목만. 로컬 전용 모드에서는 없음 |
 | 파일 이름, 프로젝트 목록 | 보내기로 동의했을 때만(제목·프로젝트 정할 때 사용) |
 | 회의록 | 내 볼트 폴더. 회의록에 글자를 받은 엔진이 적힙니다 |
+| 업데이트 확인 | 하루 한 번 GitHub에 새 커밋이 있는지만 물어봄(`git fetch`). 회의 내용은 보내지 않음. 설정에서 끌 수 있음 |
 
 모델은 처음 설치할 때 Hugging Face에서 내려받고, 처리할 때는 `HF_HUB_OFFLINE=1`로 돌립니다.
 
@@ -157,8 +161,12 @@ deploy/setup.sh open              # 브라우저로 설정 화면 열기
 <details>
 <summary><b>업데이트, 상태 보기, 지우기</b></summary>
 
+새 버전이 나오면 모든 화면 위에 알림 띠가 뜹니다. **업데이트**를 누르면 새 코드를 받아 바꿔 끼우고
+화면을 다시 연결합니다. 실패하면 이전 버전으로 되돌립니다. 처리 중인 녹음이 있으면 끝난 뒤에 합니다.
+터미널에서는 이렇게 합니다.
+
 ```sh
-git pull && deploy/setup.sh update     # 새 버전으로 서비스 교체, 실패하면 이전 상태로 되돌림
+git pull && deploy/setup.sh update     # 업데이트 버튼과 같음
 deploy/setup.sh status                 # 엔진 상태(JSON)
 deploy/setup.sh doctor                 # 기기·모델·서비스 점검
 
@@ -227,6 +235,9 @@ S2 역할에 "서버 담당자 자기소개도 혼재"가 붙은 것은 화자 �
 | `providers.consent` | — | 엔진마다 보낼 수 있는 항목 |
 | `providers.local_only` | `false` | 외부 엔진을 모두 막음 |
 | `providers.codex.speed` | `standard` | `fast`는 Codex Fast 모드(약 1.4배 빠름, 구독 사용량 더 씀) |
+| `updates.check` | `true` | 하루 한 번 GitHub에서 새 버전 확인 |
+| `vocabulary.terms` | — | 잘 들어야 할 이름·용어(최대 200개). `vocabulary` 동의가 있으면 교정 엔진에도 전달 |
+| `vocabulary.replace` | — | 받아쓰기 뒤 로컬에서 적용하는 확정 치환. 예: `{from = "책 마루", to = "책마루"}` |
 
 환경 변수 `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY`, `QC_PORT`가 파일보다
 우선합니다.
@@ -243,7 +254,7 @@ S2 역할에 "서버 담당자 자기소개도 혼재"가 붙은 것은 화자 �
 
 ```sh
 uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn \
-  --with jinja2 --with httpx --with jsonschema python -m pytest -q tests
+  --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
 ```
 
 테스트는 합성 음성과 가짜 엔진만 쓰며 MLX 모델을 불러오지 않습니다. 구조와 기여 방법은

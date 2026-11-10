@@ -41,11 +41,15 @@ def commit(path, part, *, stage, run_id, inputs, params, seq=1, ok=True):
     return meta
 
 
+ANY_PARAMS = object()
+
+
 def reusable(path, stage, inputs, params):
     try:
         meta = json.loads(metadata(path).read_text(encoding='utf-8'))
         return meta if (meta.get('ok') is True and meta.get('stage') == stage and
-                        meta.get('inputs') == inputs and meta.get('params') == params and
+                        meta.get('inputs') == inputs and
+                        (params is ANY_PARAMS or meta.get('params') == params) and
                         sha256(path) == meta.get('output_sha256') and
                         isinstance(meta.get('producer', {}).get('run_id'), str)) else None
     except (OSError, ValueError, TypeError, AttributeError):
@@ -64,6 +68,11 @@ def reuse(source, target):
         os.replace(part, new)
 
 
+# A re-summary keeps the transcript the meeting already has: these stages are reused from
+# the newest verified earlier output even if models, rules or settings changed since.
+RESUMMARY_KEPT = ('convert', 'diarize', 'detect_language', 'transcribe', 'second_pass', 'turns', 'correct')
+
+
 def cache_allowed(stage, mode, legacy=False):
     if legacy or stage in ('note', 'render'):
         return False
@@ -75,11 +84,18 @@ def cache_allowed(stage, mode, legacy=False):
 
 
 def find(runs_dir, current_run, name, stage, inputs, params):
+    """Verified earlier output for these inputs; params=ANY_PARAMS takes the newest one."""
+    hits = []
     for directory in sorted(Path(runs_dir).iterdir(), key=lambda p: p.name, reverse=True):
         if directory.name == current_run or not directory.is_dir():
             continue
         path = directory / name
         meta = reusable(path, stage, inputs, params)
         if meta is not None:
-            return path, meta
+            if params is not ANY_PARAMS:
+                return path, meta
+            hits.append((meta.get('created_at') or '', path, meta))
+    if hits:
+        _, path, meta = max(hits, key=lambda hit: hit[0])
+        return path, meta
     return None
