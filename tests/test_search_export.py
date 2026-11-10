@@ -248,6 +248,8 @@ def test_live_demo(tmp_path, capsys):
                     if format == 'docx':
                         path = tmp_path / (job + '.docx')
                         path.write_bytes(response.content)
+                        if shutil.which('textutil') is None:  # macOS only; CI runs on Linux
+                            continue
                         opened = subprocess.run(['textutil', '-convert', 'txt', '-stdout', str(path)], capture_output=True, check=True)
                         assert len(opened.stdout.decode('utf-8')) > 100
         app.state.auth.refresh()
