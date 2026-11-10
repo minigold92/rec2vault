@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>QuietClerk</title>
+<link rel="icon" type="image/svg+xml" href="/static/seogi.svg">
+<link rel="stylesheet" href="/static/qc.css">
+<script type="module" src="/static/app.js"></script>
+</head>
+<body data-screen="{{ screen }}"{% if job_id %} data-job="{{ job_id }}"{% endif %}>
+<div id="app"></div>
+<noscript><p>QuietClerk needs JavaScript. / QuietClerk는 JavaScript가 필요해요.</p></noscript>
+{% if data is not none %}<script type="application/json" id="qc-data">{{ data|tojson }}</script>
+{% endif %}</body>
+</html>

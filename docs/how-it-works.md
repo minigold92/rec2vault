@@ -1,244 +1,414 @@
 # How QuietClerk works
 
-This page follows **one fictional meeting** from the phone to the finished note, showing what each stage
-receives, what it produces and why it is built that way. Every excerpt below is real output of the
-current code, produced from the files in [`examples/demo-meeting/`](examples/demo-meeting/).
+This page follows **one fictional meeting** from the phone to the finished note. For every stage it shows what
+goes in, what comes out, and why it is built that way. Every excerpt is copied from files in
+[`examples/demo-meeting-en/`](examples/demo-meeting-en/), produced by the current code.
 
 [한국어](how-it-works.ko.md)
 
-> **About the example.** A three-person meeting about redesigning a (fictional) neighbourhood library
-> app called *Chaekmaru* (책마루). The script was written for this page and voiced with macOS `say`
-> (voices Yuna, Eddy, Shelley), 157 seconds long. Synthetic voices are not people, so the accuracy
-> numbers on this page show *what the stages do*, not how well they work on real meetings — see
-> [benchmark.md](benchmark.md) for measurements on real recordings. The meeting is in Korean; English
-> glosses are given in brackets.
-
-The script plants things the pipeline should catch:
-
-| Planted | In the script |
-|---|---|
-| 1 decision | Put "My loans" in the first slot of the home screen, with the renewal button inside it |
-| 2 action items | Ojian: home-screen mock-up by next Friday · Moon Taeo: measure renewal API latency, **no deadline yet** |
-| 1 number | 38% of app enquiries in the last 3 months were about renewals |
-| Words likely to be misheard | the app name 책마루, and English loanwords said in Korean: 에이피아이 (API), 피그마 (Figma), 온보딩 (onboarding), 푸시 알림 (push notification) |
-| A person introduced by name | The chair introduces "Ojian" (오지안) |
+> **About the example.** A 90-second, three-person product meeting about a made-up bike-share app
+> ("Harbor Bikes" in the script). The script ([`scripts/script.md`](examples/demo-meeting-en/scripts/script.md))
+> was written for this page and voiced with macOS `say` (voices Reed, Daniel, Tara). **Synthetic voices are
+> not people**: what you see here shows what each stage does, not how well it works on real meetings. Accuracy on
+> real recordings is in [benchmark.md](benchmark.md), and only for Korean.
+> The same walkthrough with a Korean meeting, including a speaker-separation failure, is in
+> [how-it-works.ko.md](how-it-works.ko.md).
 
 ```mermaid
 flowchart LR
-  A["1 · Phone<br/>record & save"] --> B["2 · Intake<br/>stable? new? long enough?"]
-  B --> C["3 · Convert<br/>16 kHz mono"]
-  C --> D["4 · Who spoke when<br/>diarization"]
-  C --> E["5 · What was said<br/>transcription + word times"]
-  C --> F["6 · Second opinion<br/>another recognizer"]
-  D --> G["7 · Speaker turns"]
-  E --> G
-  G --> H["8 · Fix misheard words<br/>LLM, uses 6 as a hint"]
-  F --> H
-  H --> I["9 · Classify & title"]
-  I --> J["10 · Summary<br/>with line citations"]
-  J --> K["11 · Obsidian note"]
+  A["Phone recorder<br/>.m4a"] -->|Syncthing| B["inbox/"]
+  subgraph MAC["Your Mac: the audio stays here"]
+    B --> C["intake<br/>stable? new? 5 min to 3 h?"]
+    C --> D["convert<br/>diarize<br/>detect_language"]
+    D --> E["transcribe<br/>second_pass"]
+    E --> F["turns"]
+  end
+  subgraph CLI["Text only: your LLM CLI (e.g. Codex)"]
+    G["correct<br/>classify<br/>summarize"]
+  end
+  F --> G --> H["note<br/>Obsidian vault"]
 ```
 
-Times below are from the pipeline log for this example on a Mac mini M4 (16 GB): 106 seconds for
-157 seconds of audio. A real 35-minute meeting took 808 seconds ([benchmark.md](benchmark.md#end-to-end-time)).
+The pipeline ran on an Apple M3 Max Mac and took **45 s for 90 s of audio** (`work/pipeline.log`):
+
+```
+convert:done:0s diarize:done:2s detect_language:done:3s transcribe:done:5s second_pass:done:4s turns:done:0s correct:done:11s classify:done:11s summarize:done:10s note:done:0s
+```
+
+For scale, [benchmark.md](benchmark.md#end-to-end-time) has a real 35.4-minute recording on a Mac mini M4 taking
+808 s. The two machines and recordings are not comparable.
+
+## What the script plants
+
+The pipeline is judged against things we know are in the audio:
+
+| Planted | In the script |
+|---|---|
+| 1 decision | Ride passes move to the first screen; the referral programme is out of this release |
+| 2 action items | Priya: mock-ups by next Thursday · Leo: measure the unlock API latency, **no deadline yet** |
+| 2 figures | 41% of support tickets; 2.3 s median unlock time |
+| 1 open issue | Keep the old map view for older phones? |
+| Names | Priya and Leo introduce themselves; the chair (Marcus in the script) is never named |
+| Easy to mishear | The app name, "API", "mock-ups", "referral programme" |
 
 ---
 
-## 1. The phone records, Syncthing delivers
+## 1. Phone to inbox
 
-The phone's built-in recorder saves `음성 261110_100000.m4a` ("Voice 261110_100000", the date and time
-the recording started). Syncthing copies the file to the Mac's inbox folder (`~/rec/inbox`).
+The phone's recorder app saves `Recording 261112_140000.m4a` (`YYMMDD_HHMMSS`, the start time). Syncthing copies
+it into the Mac's `inbox/` folder. The pipeline **only reads the inbox**: it copies a file out and never moves,
+renames or deletes anything there.
 
-The inbox is **receive-only, and the pipeline only ever reads it**. If a program moved or deleted files
-there, Syncthing could replay that deletion onto the phone's original recording.
+## 2. Intake: is this file finished, new, and safe to open?
 
-## 2. Intake: is the file finished, new and worth processing?
+On your Mac a background service (launchd `KeepAlive`, `quietclerk.cli serve`) scans the inbox every 60 s and runs
+queued jobs one at a time; this demo used a single pass of `python -m quietclerk.tick` instead. A file must pass
+every check before it becomes a **job**:
 
-Every minute the pipeline looks at the inbox (`rec/intake.py`):
-
-| Check | Why | This example |
+| Check | Why | In this demo |
 |---|---|---|
-| Size and modification time unchanged for 60 s | Syncthing may still be writing the file | passed |
-| SHA-256 not seen before | The same audio is never processed twice, even under another name | new |
-| Decodes with `ffprobe`; 5 min ≤ length ≤ 3 h; ≤ 1 GB | Skip broken files, pocket recordings and runaway files | 157 s — the demo ran with the minimum lowered to 60 s |
-| Recorded after the install time (`REC_SINCE`) | Old recordings on the phone are not processed unless you ask | passed |
-| Not a call recording (`통화*`), not in a subfolder, not a symlink | Only voice recordings | passed |
+| Only top-level `.m4a`; not hidden, not `통화*` (call recordings), not a symlink | Only voice recordings; never follow a link out of the inbox | passed |
+| Size and modification time unchanged for 60 s | Syncthing may still be writing | demo set `stable_sec = 0` |
+| Copied to a private quarantine folder with `O_NOFOLLOW`, ≤ 1 GiB, hashed (SHA-256) | A file that changes mid-copy is ignored and retried; one hash = one job, even under another name | new |
+| `ffprobe` after a header scan; one AAC stream; 5 min ≤ length ≤ 3 h | Skip broken, pocket-length and runaway files | demo set `min_duration_sec = 60`; 90 s passes |
+| Recorded after the install time (or listed in `include.txt`) | Old phone recordings are not processed by surprise | demo set `since = "2026-01-01 00:00"` |
 
-A file that passes is copied to `archive/<job_id>/source.m4a` (the hash is checked again after
-copying) and becomes a **job** with id `20261110-100000-8d21adaf` (recording time + start of the hash).
-A file that fails a policy check becomes a job with status `skipped` and the reason.
+A pass is copied to `archive/<job_id>/source.m4a`. The job id is `20261112-140000-66bb2495`: recording time plus
+the first 8 characters of the hash. A policy failure (too short, before the cutoff) is kept as a `skipped` job
+that you can promote later; a hostile or broken file is only logged as rejected (see [section 7](#7-odd-and-hostile-input)).
+A failed stage is retried up to 3 times, 5 minutes × attempt number apart, then marked `failed`.
 
-```mermaid
-stateDiagram-v2
-  [*] --> queued: checks pass
-  [*] --> skipped: too short / before cutoff / broken
-  queued --> running
-  running --> done
-  running --> failed_retryable: error (try again in 5 min × attempts)
-  failed_retryable --> running
-  failed_retryable --> failed_final: 3rd failure
-```
+## 3. The ten stages
 
-## 3. Convert
+Each stage writes one JSON file and records the hash of its inputs and its parameters. Run it again and a stage
+whose inputs and parameters did not change is **reused** instead of recomputed. Files below are in
+[`work/`](examples/demo-meeting-en/work/), named after the stage. (On disk, `detect_language`, `transcribe`,
+`second_pass`, `correct`, `classify` and `summarize` are stored as `language.json`, `asr.json`, `alt.json`,
+`corrected.json`, `classification.json` and `summary.json`.)
 
-`ffmpeg` turns the file into 16 kHz mono WAV, the input every model expects. (0 s)
+### convert
 
-## 4. Who spoke when — diarization
+**In** `source.m4a` → **Out** `audio.wav`, 16 kHz mono 16-bit (not kept in the examples; ~2.9 MB for 90 s).
+`ffmpeg` with a restricted protocol list reads only the file itself, and the decoded length must match the probed
+length within 10%. Every model below expects this format.
 
-[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) (MLX port) listens
-for voice changes and returns time ranges with an anonymous speaker label. It does not know names or
-words. (2 s)
+### diarize: who spoke when
+
+**In** `audio.wav` → **Out** [`diarize.json`](examples/demo-meeting-en/work/diarize.json)
 
 ```json
-[{"start": 0.0,  "end": 0.85,  "speaker": "0"},
- {"start": 1.09, "end": 8.52,  "speaker": "0"},
- {"start": 9.39, "end": 11.67, "speaker": "1"},
- {"start": 12.09,"end": 17.29, "speaker": "1"}, …]          // 59 ranges, 3 speakers
+[{"start": 0.0, "end": 3.48, "speaker": "0"}, {"start": 3.8000000000000003, "end": 6.1000000000000005, "speaker": "0"}, {"start": 7.15, "end": 10.67, "speaker": "1"}, {"start": 11.34, "end": 14.49, "speaker": "2"}, …]
 ```
 
-## 5. What was said — transcription with word times
+22 time ranges, labels `"0"`, `"1"`, `"2"` (anonymous). The model, NVIDIA Nemotron 3 Diarization (MLX), knows
+neither names nor words. It runs first because the next stage uses it to find speech.
 
-[Qwen3-ASR 1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) transcribes the audio in 60-second chunks,
-then [Qwen3-ForcedAligner](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B) finds when each word was
-spoken. (21 s)
+### detect_language
+
+**In** `audio.wav`, `diarize.json` → **Out** [`detect_language.json`](examples/demo-meeting-en/work/detect_language.json)
 
 ```json
-[{"start": 0.0,  "end": 1.12, "text": "안녕하세요"},   // "hello"
- {"start": 1.12, "end": 1.44, "text": "동네"},         // "neighbourhood"
- {"start": 1.44, "end": 2.0,  "text": "도서관"},       // "library"
- {"start": 2.0,  "end": 2.16, "text": "앱"},           // "app"
- {"start": 2.16, "end": 2.72, "text": "책마루"}, …]    // 230 words
+{"status": "decided", "top": "en", "shares": {"en": 1.0}, "windows": [{"start": 7.15, "end": 10.67}, …
 ```
 
-Why this model: on four real Korean meetings it was the steadiest local option and never skipped audio
-([benchmark.md](benchmark.md#full-recordings)). Word times are what make step 7 and the citation links
-possible.
+Takes up to six windows (≤ 20 s each) of diarized speech spread across the recording and lets Whisper vote on
+each one, weighted by length. It is `decided` only with at least 15 s of speech and a 60% share; otherwise the
+note is flagged. The result picks the language for every later stage, including the LLM prompts. A fixed language
+in settings skips this stage.
 
-## 6. A second opinion
+### transcribe: what was said, with word times
 
-[Whisper large-v3 turbo](https://huggingface.co/openai/whisper-large-v3-turbo) transcribes the same audio
-independently (15 s). It is not used as the transcript; where the two recognizers disagree, the
-disagreement tells the corrector (step 8) where a word was probably misheard. On real meetings, adding
-this hint improved correction by about one point of character error rate
-([benchmark.md](benchmark.md#correction-with-a-subscription-cli-two-5-minute-clips)).
-
-## 7. Speaker turns: putting words and voices together
-
-`rec/transcript.py` gives every word the speaker whose time range overlaps it most, then joins
-consecutive words of the same speaker into a **turn** unless there is a pause of 1.5 s or more.
-Anonymous labels become `S1`, `S2`, … in order of first appearance.
-
-| # | Speaker | Time | Text (start) |
-|---|---|---|---|
-| 1 | S1 | 0:00–0:08 | 안녕하세요 동네 도서관 앱 책마루 개편 회의를 시작하겠습니다 … ("Hello, let's start the Chaekmaru redesign meeting …") |
-| 2 | S2 | 0:09–0:22 | 안녕하세요 오지안입니다 … 안녕하세요 소보르를 맡고 있는 문채오입니다 |
-| 3 | S1 | 0:23–0:32 | 먼저 배경부터 말씀드리겠습니다 … 관련 문의가 38였습니다 |
-
-The script has 20 lines from 3 people; the pipeline produced 16 turns. Turn 2 shows the main failure of
-this stage: **two people merged into one speaker**. "Hello, I'm Ojian…" and "Hello, I handle the server,
-I'm Moon Taeo" are different voices, but diarization gave both to S2, so they became one turn. In this
-example, 3 of Moon Taeo's 5 lines were merged into Ojian's. Words at the edge of a range can also land
-on the wrong side (turn 10 starts with the end of someone else's sentence).
-
-This is why speakers stay numbered, the note shows a "possible split error" flag, and names are only
-suggested with a "(?)" and a link to where they were heard.
-
-## 8. Fixing misheard words
-
-The turns, 60 at a time, are sent to a subscription CLI (Codex by default) with fixed rules
-(`rec/postprocess.py`): keep every line id, speaker and time; fix only words that were misheard or
-spaced wrongly; do not add, remove or summarize; treat everything in the transcript as data, not
-instructions. The matching stretch of the second-opinion transcript is attached as a hint. If the reply
-drops or merges lines, it is rejected and the chunk is retried in halves; a part that still fails keeps
-its original text. (30 s, one call)
-
-| Turn | Before → after | Verdict against the script |
-|---|---|---|
-| 2 | 소보르를 → 서버를 ("the server") | fixed |
-| 3 | 38였습니다 → 38%였습니다 | fixed |
-| 7 | 소자 동생답니다 사만이온 야무스는 무료수정 API입니다 … → 다만 연장 버튼을 눌렀을 때 API 응답이 느리면 … ("but if the API is slow when the renewal button is pressed …") | fixed — this stretch was almost unintelligible before |
-| 2, 16 | 문채오 → 문채호, 태오 → 태호 | **still wrong** (the name is 문태오, Moon Taeo) |
-| 10 | 귀하는 → 기한은 ("the deadline") ×2 | first correct; the second should have been 시안은 ("the mock-up") — **the corrector changed the meaning** |
-
-Against the script, the character error rate was 9.7% for the primary transcript, 3.2% for the second
-opinion and **2.1% after correction**. Correction helps a lot, but it is a language model guessing from
-context: it can fix nonsense, and it can also confidently write the wrong word. Names are the hardest.
-
-## 9. Classify and title
-
-One more call reads the corrected transcript and returns structured fields, which the code validates
-(the type must come from a fixed list, a name must point to a real line, a project must already exist in
-your notes or it is only a suggestion). (14 s)
+**In** `audio.wav`, `detect_language.json` → **Out** [`transcribe.json`](examples/demo-meeting-en/work/transcribe.json)
+(224 words)
 
 ```json
-{"title": "책마루 앱 홈 화면 개편과 대출 연장 기능 개선",
- "type": "회의", "type_confidence": "high", "division": "업무",
- "topics": ["최근 3개월 문의 38%", "내 대출 현황", "API 응답 시간", "푸시 알림 제외", "신규 가입자 온보딩 연기"],
- "project": null, "project_suggest": "책마루 앱 개편",
- "speakers": {"S1": {"role": "진행"},
-              "S2": {"role": "디자인 및 서버 관련 발언자", "name": "오지안", "name_id": "t002", "split_suspect": true},
-              "S3": {"role": "API 응답 시간 측정 담당"}}}
+[{"start": 0.0, "end": 0.24, "text": "Hi"}, {"start": 0.24, "end": 0.96, "text": "everyone"}, {"start": 1.12, "end": 1.36, "text": "Let's"}, …, {"start": 1.92, "end": 2.72, "text": "ArborBikes"}, …]
 ```
 
-("Chaekmaru app home-screen redesign and renewal improvements"; type *meeting*; S1 *chair*; S2 *Ojian?,
-design and server*; S3 *measuring API latency*.) The model noticed that S2 talks about both design and
-the server and flagged it as a possible split error — which it is.
+Qwen3-ASR 1.7B (8-bit) transcribes in chunks of at most 60 s; Qwen3-ForcedAligner 0.6B then finds when each word
+was spoken. Output has no punctuation. Word times are what make the next stage and the clickable citations in
+the note possible. Note `ArborBikes`: the script says *Harbor Bikes*.
 
-## 10. Summary with line citations
+### second_pass: a second opinion
 
-The last call writes the summary in the layout for the meeting type (a *meeting* gets key points,
-discussion by topic, decisions, action items, unresolved, needs-checking). The prompt asks every sentence
-to cite the transcript lines it is based on as `[t014]`; a summary with no citations at all is rejected. (24 s)
+**In** `audio.wav`, `detect_language.json` → **Out** [`second_pass.json`](examples/demo-meeting-en/work/second_pass.json)
+(225 words)
+
+```json
+[{"start": 0.0, "end": 0.24, "text": "Hi"}, {"start": 0.24, "end": 0.7, "text": "everyone,"}, {"start": 1.14, "end": 1.42, "text": "let's"}, …
+```
+
+Whisper large-v3 turbo transcribes the same audio independently. It is **never used as the transcript**; it is
+only given to the correction stage as a hint, because two recognizers rarely make the same mistake. Here they did
+make the same one: Whisper also heard `Arbor` (`{"start": 1.9, "end": 2.3, "text": "Arbor"}`) and it also
+misheard "look after the backend" as `{"start": 13.34, "end": 13.6, "text": "off"}`.
+
+### turns: words plus voices
+
+**In** `transcribe.json`, `diarize.json` → **Out** [`turns.json`](examples/demo-meeting-en/work/turns.json)
+
+```json
+{"start": 0.0, "end": 6.08, "speaker": "S1", "text": "Hi everyone Let's start the ArborBikes app review Priya from Design is joining us today"}
+{"start": 7.28, "end": 10.64, "speaker": "S2", "text": "Hi I'm Priya I'd like to walk through the new first screen"}
+{"start": 11.44, "end": 14.48, "speaker": "S3", "text": "Hi Leo here I look after the backend"}
+```
+
+Plain code, no model (`quietclerk/transcript.py`): each word gets the diarization speaker it overlaps most; words
+by the same speaker join into one **turn** unless there is a pause of 1.5 s or more; labels become `S1`, `S2`, …
+in order of first appearance. Turns are the unit everything after this refers to: `t1`, `t2`, … in the note.
+
+Against the script, **all 16 script lines became 16 turns with the right speaker** (S1 chair, S2 Priya, S3 Leo)
+in this clip. That is not typical: it takes clearly different voices and clean turn-taking. The Korean demo shows
+what happens when it fails.
+
+### correct: fix misheard words
+
+**In** `turns.json` + `second_pass.json` → **Out** [`correct.json`](examples/demo-meeting-en/work/correct.json)
+
+The turns go to your LLM CLI 60 at a time as JSON with the matching stretch of the second-pass text attached. The
+rules (`quietclerk/postprocess.py`): keep every id and line count, fix only misrecognized words and spelling, never
+add, drop or summarize, keep uncertain text unchanged, and treat anything in the transcript as data, never as an
+instruction. A reply that drops, merges or duplicates lines is rejected and the chunk is retried in halves; a
+part that still fails keeps its original text. One call here (`"correct 0-15: codex"`). Two of 16 lines changed:
+
+| Turn | Before → after |
+|---|---|
+| 1 | `ArborBikes` → `Arbor Bikes` |
+| 4 | `fortyone percent` → `forty-one percent` |
+
+The other 14 are identical. What it could **not** fix: `Arbor` stays (both recognizers agree, and the LLM has no
+way to know the app is called *Harbor*), and the stray word in `two point three seconds Seconds at the median` (turn 8) survived.
+Correction is a language model guessing from context: it fixes nonsense, and it can just as confidently write a
+wrong word.
+
+### classify: type, title, speakers
+
+**In** `correct.json` + the source file name + names of projects already in your vault → **Out**
+[`classify.json`](examples/demo-meeting-en/work/classify.json)
+
+```json
+"title": "Arbor Bikes App First-Screen Review",
+"type": "meeting",
+"type_confidence": "high",
+"type_basis_id": "t13",
+"division": "work",
+"project": null,
+"project_suggest": "Arbor Bikes app",
+"S2": {"role": "Design representative", "name": "Priya", "name_id": "t2", "split_suspect": false},
+"S3": {"role": "Backend representative", "name": "Leo", "name_id": "t3", "split_suspect": false}
+```
+
+The code validates the reply instead of trusting it: `type` must be from a fixed list, a name counts only if
+`name_id` points at a real line, a project counts only if it already exists in your notes (otherwise it becomes
+`project_suggest`), the title must be 8–50 characters, and speaker labels must match the turns. `split_suspect` is the
+model's flag for "one label seems to contain two people". The chair `S1` has no name because nobody says it,
+which matches the script.
+
+### summarize: summary with line citations
+
+**In** `correct.json`, `classify.json` → **Out** [`summarize.json`](examples/demo-meeting-en/work/summarize.json)
 
 ```markdown
-## 결정 사항                                     (Decisions)
-- 참석자들은 이번 개편에서 홈 화면 첫 칸을 내 대출 현황으로 변경하기로 합의함 [t014] [t015]
+## Decisions
 
-## 할 일                                         (Action items)
-- [ ] 홈 화면 시안 업로드 및 글자 크기 2종 포함 (담당: S2 / 기한: 다음 주 금요일까지) [t011] [t016]
-- [ ] 대출 연장 응답 시간 측정 및 공유 (담당: S3 / 기한: 미정) [t009] [t016]
+- Move ride passes to the first screen. [t13, t14, t15]
+- Exclude the referral program from this release. [t13, t14, t15]
+
+## Tasks
+
+- [ ] Measure unlock API latency and share the results (Leo / deadline to be set after checking the sprint). [t10, t11]
+- [ ] Prepare mockups (Priya / next Thursday). [t12]
 ```
 
-All planted items came out: the decision, both action items with the right owner (by speaker number)
-and the missing deadline kept as *미정* ("not set"), the 38% figure, and push notifications and
-onboarding being out of scope. The unresolved name ("does 태호 refer to S3?") went to *needs checking*.
+The section layout depends on the meeting type (a *meeting* gets key summary, agenda, decisions, tasks, open
+issues, review needed). The prompt asks for a `[t12]` citation on every item, and a summary with no citation at
+all is rejected. Only agreed outcomes count as decisions and only assigned or volunteered work as tasks.
 
-A citation proves where to look, not that the sentence is right. That is why the citations are links.
+### note: write the Markdown file
 
-## 11. The Obsidian note
+**In** `summarize.json` and the other stage outputs → **Out** a note in your vault,
+[`notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md`](examples/demo-meeting-en/notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md),
+plus [`work/note.json`](examples/demo-meeting-en/work/note.json) (path and review reasons). This stage is never
+cached: it merges into whatever is already in the vault. See [section 5](#5-the-note).
 
-`rec/render.py` assembles the note and writes it atomically into your vault folder as
-`2026-11-10_책마루_앱_홈_화면_개편과_대출_연장_기능_개선_1000.md`
-([full note](examples/demo-meeting/notes/2026-11-10_책마루_앱_홈_화면_개편과_대출_연장_기능_개선_1000.md)):
+## 4. Against the script
 
-- **Properties** for sorting and filtering: date, start time, length, type, topics, speakers, review
-  flag, the original file name and its SHA-256 (so the note can always be traced back to the recording),
-  and which engines produced it.
-- **Citations become links**: `[t014]` turns into `[[#^t014|01:59]]`, and each transcript line ends with a
-  block id `^t014`, so clicking the time jumps to the line.
-- **Callouts** separate the key summary and the "needs checking" items from the body.
-- A **Bases view** (`회의록.base`) next to the notes lists recent notes, notes waiting for review and notes
-  by type.
+Planted items, checked by reading the output:
 
-If the same recording is processed again, the existing note is found through its job id and replaced
-in place, even if you renamed the file.
+| Planted | Result |
+|---|---|
+| Decision | ✅ Two lines in `## Decisions`: passes to first screen; referral programme out |
+| Task: Priya | ✅ `Prepare mockups (Priya / next Thursday)`, with owner by name. "Next Thursday" stays a phrase; it is not converted to 2026-11-19 |
+| Task: Leo, no deadline | ✅ `deadline to be set after checking the sprint`: the missing date was kept, not invented |
+| 41% | ✅ in the key summary |
+| 2.3 s | ⚠️ Present only as an item under `Review needed` ("proper measurement is pending"); not in the key summary |
+| Open issue | ✅ `## Open issues`: old map view |
+| Speakers | ✅ 16/16 lines on the right speaker; Priya and Leo named from their introductions; chair unnamed |
+| App name | ❌ **`Arbor Bikes` everywhere, including the title and the note's file name.** Script says *Harbor* |
+| Wording | One extra word `Seconds` remains in turn 8 |
+
+Counting words after folding spelling variants (`forty-one` = `41 percent`, `mock-ups` = `mockups`, …),
+the 225-word script differs from the transcript by 2 words (*Harbor* → *Arbor*, the extra *Seconds*) before and
+after correction, and from the second pass by 4. A single clip, one speaker voice each, synthetic: do not read
+these as an error rate.
 
 ---
 
-## What leaves your machine
+## 5. The note
+
+`render.py` and `notes/` assemble the note and write it **atomically** (temp file, fsync, journal, rename).
+Excerpt of the properties ([full note](examples/demo-meeting-en/notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md)):
+
+```yaml
+qc_schema: 2
+title: Arbor Bikes App First-Screen Review
+date: '2026-11-12'
+started_at: '2026-11-12T14:00:00'
+duration_min: 1.5
+language: en
+type: meeting
+status: draft
+needs_review: true
+review_reasons:
+- summary_review
+source_file: Recording 261112_140000.m4a
+source_sha256: 66bb249562015d787ecfd2858a310836ca180fff9edcab2b00dbd1c13094582d
+job_id: 20261112-140000-66bb2495
+pipeline_llm:
+- codex
+external_text_to:
+- codex
+```
+
+The body (the headings are plain Markdown; there are no hidden comment markers):
+
+```markdown
+## Tasks
+- [ ] Measure unlock API latency and share the results (Leo / deadline to be set after checking the sprint). [[#^t10|00:53]] [[#^t11|01:02]] ^task-1
+- [ ] Prepare mockups (Priya / next Thursday). [[#^t12|01:06]] ^task-2
+
+## Meeting record
+
+> [!info] Overview
+> Meeting · 1.5 min
+
+| Speaker | Role | Name |
+|---|---|---|
+| S2 | Design representative | Priya [[#^t2\|00:07]] |
+
+> [!summary] Key summary
+…
+## Full transcript
+
+**[00:07] S2**: Hi I'm Priya I'd like to walk through the new first screen ^t2
+
+## Notes
+```
+
+- **Citations are links.** `[t10]` became `[[#^t10|00:53]]` and each transcript line ends with the block id `^t10`,
+  so clicking a time jumps to the line. A citation that points at no line is shown as `[?t999]` and adds a review
+  reason. A citation proves where to look, not that the sentence is right.
+- **Tasks** are Markdown checkboxes with their own block ids (`^task-1`).
+- **`needs_review: true`** with the reason `summary_review` because the summary has a *Review needed* section. Other
+  reasons: uncertain type or language, a failed correction chunk, an unknown citation.
+- **Provenance**: models and revisions (`pipeline_asr`), the LLM CLI (`pipeline_llm`), and who received text
+  (`external_text_to`), plus the original file name and SHA-256, so a note can always be traced to its recording.
+- `notes/회의록-v2.base` is an Obsidian Bases view (recent notes, notes waiting for review) written next to the notes
+  if absent. An existing file is never overwritten.
+
+### What stays yours when the note is regenerated
+
+If the same recording is processed again (you changed the LLM, or asked for a fresh summary), the note is found by
+`job_id` + hash even if you renamed the file, and updated in place:
+
+- **The engine owns exactly one stretch**: from `## Meeting record` to the next `## Notes`. Everything else,
+  including your edits to the task list, text you add anywhere outside that stretch, and the `## Notes` section,
+  is preserved byte for byte.
+- **Properties**: `project`, `attendees` and `status` are yours from the start. Any other property you edit
+  (say `title`) becomes yours the moment it differs from what the engine last wrote, and is never overwritten afterwards.
+- Tasks the new summary proposes that you do not already have appear under *Newly proposed tasks* inside the
+  engine stretch instead of silently changing your list.
+- Text produced by a model cannot fake the boundaries: a model-written `## Notes` heading is demoted, and
+  HTML, links, images and block ids in model text are neutralized.
+- A note with a missing or duplicated boundary heading, malformed YAML, or a changed hash at write time is **not
+  written**; the job reports a conflict and your file stays as it was.
+
+## 6. What leaves your Mac
 
 | Data | Where it goes |
 |---|---|
-| Audio | Phone → your Mac (Syncthing, encrypted). Not sent to any AI service |
-| Transcript text, original file name, list of your existing project names | The CLI's provider (OpenAI for Codex) for steps 8–10 |
-| Models | Downloaded once from Hugging Face; the pipeline then runs with `HF_HUB_OFFLINE=1` |
+| **Audio** | Phone → your Mac through Syncthing. Never sent to an AI service |
+| Transcript text of every turn (stages `correct`, `classify`, `summarize`) | The LLM CLI you configured (here `codex`, i.e. OpenAI) |
+| Source file name and the list of project names already in your vault (stage `classify` only) | The same CLI |
+| Model weights | Downloaded once at install; at run time loaded from the local Hugging Face cache only |
 
-## Failure modes to know about
+How it is limited:
 
-| What happens | Where | What the note does |
+- **Per-provider consent per field.** `settings.toml` of this demo has
+  `"providers.consent" = {codex = ["transcript", "source_name", "project_list"]}`. A provider without consent for
+  a field is not used for that call; with no eligible provider the job waits (`blocked`), it does not fall back
+  to sending anyway.
+- **`providers.local_only = true`** allows only local endpoints (Ollama on `127.0.0.1`); an external or unknown one
+  is refused.
+- **Tools off.** Codex runs with a read-only sandbox, shell, web search and plugins disabled, in an empty temp
+  directory; Claude with no tools. If the CLI reports a tool call, the stage aborts without fallback.
+- **The note says so**: `external_text_to: [codex]` lists every provider that received text, including failed
+  attempts.
+
+## 7. Odd and hostile input
+
+Input is untrusted at three places: the audio file, the transcript the LLM reads, and the note files on disk. What
+the code does, and the test that checks it (`tests/`, all with **generated** audio and files, no real recordings):
+
+| Input | What happens | Test |
 |---|---|---|
-| Two similar voices become one speaker | step 4 | "possible split error" flag on the speaker |
-| A word at a turn boundary lands on the wrong speaker | step 7 | nothing automatic — check the transcript |
-| Names misheard | steps 5, 8 | names are suggested with "(?)" and a link, never assumed |
-| The corrector changes a word's meaning | step 8 | the uncorrected text is kept in `result.json` (`text_raw`) |
-| A summary sentence is wrong even though it cites lines | step 10 | citations are links so you can check; the note stays a draft until you mark it reviewed |
+| Ordinary `.m4a` | Processed | `test_intake.py::test_in03_duration_boundary` (299 s skipped, 300 s queued) |
+| Still being written / growing | Waits; the 60 s stability timer restarts on growth | `test_in09_stability_restarts_after_growth` |
+| 0-byte file | Waits (flagged `empty_file` after an hour); accepted if it later grows | `test_in08_zero_byte_waits_and_late_growth_is_accepted` |
+| Same audio again, or one you deleted | Not processed twice (`duplicate`, `deleted_by_user`) | `test_in16_duplicate_and_tombstone` |
+| Same name, different audio | New job | `test_in17_same_name_different_contents_creates_new_job` |
+| Too short / before the cutoff | `skipped` job, can be promoted later; the original is re-validated first | `test_in05_promote_revalidates_original` |
+| Longer than 3 h; larger than 1 GiB | Rejected; an oversized file is never read, hashed or probed | `test_in14_invalid_probe_lengths`, `test_in13_sparse_oversized_file_never_hashed_or_probed` |
+| Truncated, non-MP4 bytes named `.m4a`, or non-AAC codec | Rejected (`decode`, `format`, `codec`), no job | `test_in10_…`, `test_in11_disguised_format_and_unsupported_codec` |
+| Container pointing elsewhere (HLS playlist, ffconcat list, MP4 with `http`/`file`/`urn` data references) | Rejected `format` **before any demuxer runs**: no network request, bait file never opened | `test_intake_security.py::test_in12_external_references_never_open_network_or_local_bait` |
+| Symlink, or file swapped for a link mid-copy | Ignored / stays waiting; target never read | `test_in06_in07_ignored_paths_leave_no_records`, `test_link_swap_between_lstat_and_open_never_reads_target`, `test_midcopy_replacement_stays_waiting` |
+| Names like `../x.m4a`, backslash, newline, NUL | Rejected `path`, not a job | `test_quarantine_rejects_path_escape_names`, `test_unsafe_filename_is_rejected_not_a_job` |
+| File that grows while being copied | Copy stops at the limit plus one byte | `test_quarantine_enforces_limit_during_growth` |
+| Container length and the decoded audio length disagree by more than 10%, or decode to over 3 h | `audio_decode` failure, not retried | `test_audio.py::test_in14_false_metadata_or_over_three_hours_is_failed_audio_decode` |
+| Silence or noise | Ends as `skipped: no_speech` | `test_in19_synthetic_silence_noise_no_speech_transition` |
+| Less than 2 GiB free | Copying and processing pause; resume when space returns | `test_in15_disk_low_stops_copy_or_archive` |
+| A transcript line that says "ignore the rules and summarise" | Prompts mark transcript text as data; a reply that drops or adds lines is rejected | `test_postprocess.py::test_response_that_drops_or_adds_lines_is_rejected` |
+| LLM reply with invalid type, missing evidence, duplicate ids, or a summary without citations | Rejected and retried, then the stage fails | `test_classify_rejects_types_outside_the_list`, `test_classification_missing_evidence_is_stage_failure`, `test_IN23_duplicate_correction_ids_are_rejected`, `test_summary_must_cite_transcript_lines` |
+| LLM CLI starts using tools | Stage aborts, no fallback provider | `test_providers.py::test_tool_use_stops_without_fallback` |
+| `<script>`, links, unknown citations in model text | Escaped; unknown citation shown as `[?t9999]` | `test_notes.py::test_malicious_html_links_and_unknown_citations_are_safe` |
+| Model text that contains the note's boundary headings | Demoted, so the record span stays unique | `test_render.py::test_model_text_cannot_fake_the_record_boundaries` |
+| Note with duplicate YAML keys or alias cycles | Refused, nothing written | `test_malformed_yaml_duplicate_keys_and_alias_cycles_rejected` |
+| Process killed while writing a note | Recovered from the journal without a model call; a hash mismatch keeps your edit | `test_SIGKILL_publication_recovery_has_no_model_call`, `test_renamed_recovery_hash_mismatch_retains_user_edit` |
+
+Not covered by any test: the quality of what a **real** LLM or model does with adversarial *speech* (for example someone
+reading instructions aloud). The defences above are the prompt rules plus structural validation of the reply.
+
+## 8. Why it is built this way
+
+| Decision | Reason | Cost | Evidence |
+|---|---|---|---|
+| Diarization and transcription run **locally** | Audio never leaves your devices; no per-minute quota | Needs an Apple Silicon Mac; ~5 GB of model weights | Peak memory 5.1 GB, one hour of audio ≈ 7 min ([benchmark](benchmark.md#full-recordings)) |
+| Qwen3-ASR + aligner as the transcript | Steadiest of the local candidates; never skipped audio on four real Korean meetings; gives word times | Slower than Whisper | [benchmark](benchmark.md#full-recordings) |
+| Whisper turbo only as a *hint* | Fastest, but last on all four recordings and it dropped 6–9% of the text | An extra pass of audio | [benchmark](benchmark.md#full-recordings) |
+| LLM correction on text only, with the second transcript attached | A context-only correction improved character error against CLOVA by 1–2 points; the second recognizer about 1 more | Text leaves the machine; it can also change a correct word | [benchmark](benchmark.md#correction-with-a-subscription-cli-two-5-minute-clips) (Korean, two 5-minute clips) |
+| Turns of 60 per call, split in halves on a bad reply | Long inputs sometimes come back with merged lines; a bad chunk only costs its own correction | More calls | `quietclerk/postprocess.py`; test `test_large_chunk_that_keeps_failing_is_retried_in_halves` |
+| Speakers stay `S1`, `S2`… and names carry a link to where they were heard | Diarization can merge or split people; a name is a guess | You rename by hand | [Korean walkthrough](how-it-works.ko.md), where speakers do get merged |
+| One JSON file per stage, keyed by input hash and parameters | A crash resumes at the failed stage; changing only the summary prompt reuses everything before it | Disk space | `quietclerk/executor.py`; `reused` in the stage log of a re-run |
+| Subscription CLI instead of an API key | Uses a plan you already pay for | Depends on the CLI's supported versions (Codex 0.163–0.167 are the verified ones; others are refused unless you allow them) | `quietclerk/providers/cli.py` |
+
+Not measured anywhere: English accuracy, summary quality, speed on other Macs, absolute accuracy against a human
+transcript.
+
+## 9. What was verified, and how
+
+| Level | What |
+|---|---|
+| **Ran on synthetic input** | The full pipeline on this clip (and on the Korean clip) end to end, once each; timings and outputs on this page are from that run |
+| **Compared with a known script** | Planted decision, tasks, figures, names, speaker assignment, word differences: section 4 |
+| **Checked on real recordings** | Not by this page. [benchmark.md](benchmark.md): four real Korean meetings (18–56 min, kept locally in the git-ignored `samples/`, not published) and one 35-minute end-to-end run |
+| **Hostile and malformed input** | Unit tests in section 7 with generated files. Not tested with real-world corrupt recordings |

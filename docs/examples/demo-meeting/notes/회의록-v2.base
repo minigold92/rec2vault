@@ -1,0 +1,40 @@
+filters:
+  and:
+    - file.ext == "md"
+    - qc_schema == 2
+    - file.hasTag("meeting-notes")
+formulas:
+  type_ko: 'if(type == "meeting", "회의", if(type == "status_update", "현황공유", if(type == "presentation", "발표회", if(type == "lecture", "강의", if(type == "one_on_one", "1:1", if(type == "brainstorm", "브레인스토밍", "기타"))))))'
+  division_ko: 'if(division == "work", "업무", "개인")'
+  status_ko: 'if(status == "reviewed", "검토함", "AI초안")'
+properties:
+  title:
+    displayName: 제목
+  date:
+    displayName: 날짜
+  project:
+    displayName: 프로젝트
+  duration_min:
+    displayName: 길이(분)
+  needs_review:
+    displayName: 검토필요
+  formula.type_ko:
+    displayName: 유형
+  formula.division_ko:
+    displayName: 구분
+  formula.status_ko:
+    displayName: 상태
+views:
+  - type: table
+    name: 최근 회의록
+    order: [title, date, formula.type_ko, formula.division_ko, project, duration_min, formula.status_ko]
+    sort:
+      - property: started_at
+        direction: DESC
+  - type: table
+    name: 검토 대기
+    filters:
+      or:
+        - status == "draft"
+        - needs_review == true
+    order: [title, date, needs_review, formula.status_ko]

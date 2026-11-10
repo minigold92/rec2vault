@@ -1,190 +1,279 @@
-# rec2vault
+<p align="center">
+  <img src="docs/assets/banner-en.svg" alt="QuietClerk: record on your phone, get meeting minutes in Obsidian, transcribed on your own Mac" width="100%">
+</p>
 
-**Record a meeting with your Android phone's built-in recorder. A few minutes later, a speaker-labeled
-Korean meeting note appears in your Obsidian vault — transcribed on your own Mac.**
+<p align="center">
+  <a href="https://github.com/minigold92/rec2vault/actions/workflows/test.yml"><img alt="tests" src="https://github.com/minigold92/rec2vault/actions/workflows/test.yml/badge.svg"></a>
+  <img alt="macOS on Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-1e1f1c?logo=apple&logoColor=white">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-2f5bea?logo=python&logoColor=white">
+  <img alt="Korean and English" src="https://img.shields.io/badge/meetings-Korean%20%7C%20English-cfead4">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e9e5da"></a>
+</p>
 
-[한국어 README](README.ko.md) · [Visual overview (Korean, open locally)](docs/overview.html) · [Benchmark](docs/benchmark.md)
+<p align="center">
+  <b>English</b> · <a href="README.ko.md">한국어</a> · <a href="docs/how-it-works.md">How it works</a> · <a href="docs/benchmark.md">Benchmark</a>
+</p>
 
-Dedicated AI recorders such as Plaud pair a hardware recorder with cloud transcription and a monthly
-minute quota. An Android phone already records well, and an Apple Silicon Mac can run speech models
-locally, so this project fills the same four steps with hardware you probably already have:
+---
 
-| Step | Plaud | This project |
+Record a meeting with the voice recorder already on your Android phone and save it. A few minutes
+later a meeting note appears in your Obsidian vault: who said what, a short summary, decisions and
+tasks, and every line linked back to the moment it was said.
+
+The audio is transcribed and split by speaker **on your own Mac** with local models. Only the text
+goes to an AI command-line tool you already use (Codex CLI or Claude Code) to clean it up and write
+the summary, or nowhere at all in local-only mode.
+
+> [!NOTE]
+> **Developer preview.** Runs daily on one Mac mini with Korean work meetings. Installing takes a
+> terminal and about ten minutes; a signed Mac app is planned.
+
+<p align="center">
+  <img src="docs/assets/en-note.png" alt="The minutes screen: key summary with evidence times, speakers, audio player and data-sent panel" width="900">
+  <br><sub>The minutes screen for a fictional meeting. Each time chip plays the exact turn it comes from.</sub>
+</p>
+
+## Why
+
+AI voice recorders pair a dedicated device with cloud transcription and monthly minute plans. An
+Android phone already records well and an Apple Silicon Mac can run speech models, so QuietClerk
+does the same job with hardware you probably own:
+
+| | Dedicated AI recorder | QuietClerk |
 |---|---|---|
-| Record | dedicated recorder | the phone's built-in recorder app, unchanged |
-| Move | vendor app | Syncthing, automatic on save |
-| AI processing | vendor cloud, minute quota | your Mac: local diarization + transcription, no quota |
-| Result | vendor app | Markdown notes in your Obsidian vault |
+| Record | buy a recorder | the phone's built-in recorder, unchanged |
+| Transcribe | vendor cloud, minute quota | your Mac, no quota |
+| Summarize | vendor model | the CLI you already pay for, or a local model |
+| Result | vendor app | Markdown in your Obsidian vault |
 
 ## What you get
 
-- Hands-off: after you stop and save a recording, nothing else to do. A launchd job checks for new
-  files every minute, retries failures and never processes the same audio twice.
-- Speaker diarization and Korean transcription run locally (MLX). **The audio never leaves your
-  devices.**
-- A subscription CLI you already pay for (Codex CLI, with an optional Gemini-based fallback) fixes
-  misheard words, classifies the meeting, writes a title and a summary in a layout that fits the
-  meeting type (meeting, status update, presentation, lecture, 1:1, brainstorming).
-- Every summary sentence links to the transcript line it came from (`[[#^t012|02:20]]`), so claims can
-  be checked against what was said.
-- Notes are named `YYYY-MM-DD_<title>_<HHMM>.md` and carry properties (date, start time, length,
-  type, topics, speakers, original file name and hash) for sorting and filtering with Obsidian Bases.
-  A `회의록.base` view is created next to the notes.
+- **Hands-off.** Save a recording and walk away. The phone syncs it, the Mac picks it up once the
+  file stops changing, and a note appears. Failed steps retry; nothing is processed twice.
+- **Speakers and timestamps.** Local diarization (NVIDIA Nemotron 3) and transcription
+  (Qwen3-ASR 1.7B with word alignment, plus a Whisper second pass) on Apple Silicon via MLX.
+- **Short, checkable minutes.** Key summary, decisions, open issues and tasks with owner and
+  deadline. Every sentence ends with links like `[[#^t12|01:23]]` to the transcript line it came
+  from, so you can check it in seconds.
+- **Your edits survive.** Change the title, tick tasks or write notes in Obsidian; re-running the
+  summary rewrites only the engine's section.
+- **Korean and English.** The language is detected per recording; notes come out in the meeting's
+  language (or one you pin).
+- **You decide what leaves the Mac.** Pick which engines may receive text and which fields
+  (transcript, file name, project list). Local-only mode blocks every external call.
 
-Measured on a Mac mini M4 (16 GB): a 35-minute recording becomes a note in about 13.5 minutes. Local
-transcription is about as far from two commercial Korean services as they are from each other
-(see [docs/benchmark.md](docs/benchmark.md)).
+## Screens
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/assets/en-home.png" alt="Home: engine, phone, summary engine and disk status, what is processing now"></td>
+    <td width="33%"><img src="docs/assets/en-jobs.png" alt="Jobs: each recording's state and the reason for any skip or failure"></td>
+    <td width="33%"><img src="docs/assets/en-setup-4.png" alt="Setup step 4: choose engines, their order and exactly what text they receive"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Home</b> · what is happening now</sub></td>
+    <td align="center"><sub><b>Jobs</b> · why something was skipped or failed</sub></td>
+    <td align="center"><sub><b>Setup</b> · engines and what they receive</sub></td>
+  </tr>
+</table>
+
+The screens are served by the engine on `127.0.0.1` only, behind a one-time login token.
 
 ## How it works
 
-**Step by step, with the real intermediate output of one fictional meeting: [docs/how-it-works.md](docs/how-it-works.md).**
-
 ```mermaid
 flowchart LR
-  P["Phone recorder<br/>(m4a)"] -->|Syncthing| I["Mac: ~/rec/inbox"]
-  I --> S{"stable 60 s?<br/>new hash?<br/>≥ 5 min?"}
-  S --> D["Diarize<br/>Nemotron 3"]
-  D --> A["Transcribe<br/>Qwen3-ASR 1.7B + aligner"]
-  A --> W["Second pass<br/>Whisper large-v3 turbo"]
-  W --> C["Correct misheard words<br/>Codex CLI"]
-  C --> K["Classify, title<br/>Codex CLI"]
-  K --> M["Summary with<br/>line citations"]
-  M --> O["Obsidian note<br/>+ Bases view"]
+  P["📱 Phone recorder<br/>.m4a"] -->|Syncthing| I["Mac inbox<br/>(read-only)"]
+  I --> Q{"stable · new · long enough?"}
+  Q --> L["🔒 On your Mac<br/>diarize · detect language<br/>transcribe · second pass"]
+  L --> T["Speaker turns"]
+  T -->|"text only"| C["Your CLI<br/>correct · classify · summarize"]
+  C --> N["📝 Obsidian note<br/>+ Bases view"]
 ```
 
-Each stage writes its result to `~/rec/work/<job_id>/`, so an interrupted or failed job resumes at
-the failed stage (up to 3 attempts, 5 minutes apart). Job state lives in SQLite (`~/rec/state.sqlite3`).
-Only the text transcript is sent to the CLI; prompts treat the transcript as data and never ask the
-model to run tools.
+One long-running service (`quietclerk serve`, a launchd agent) watches the inbox, runs one recording
+at a time and keeps every stage's output, so an interrupted job resumes where it stopped. The local
+models run in separate processes and are downloaded once. A step-by-step walkthrough with the real
+intermediate files of one fictional meeting is in **[docs/how-it-works.md](docs/how-it-works.md)**.
+
+### What leaves your Mac
+
+| Data | Where it goes |
+|---|---|
+| Audio | Nowhere. Phone → your Mac over Syncthing, processed locally. |
+| Transcript text | The engines you enabled, with the fields you agreed to. None in local-only mode. |
+| File name, project list | Only if you agreed to send them (used for the title and project). |
+| Notes | Your vault folder. The note lists which engines received text. |
+
+Model downloads come from Hugging Face on first install; processing runs with `HF_HUB_OFFLINE=1`.
+
+## Speed and accuracy
+
+Measured on a **Mac mini M4 (16 GB)** with real Korean work meetings
+([details](docs/benchmark.md)):
+
+| | |
+|---|---|
+| Local stages | about 0.11–0.12 × the recording length, peak memory about 5 GB |
+| End to end | an 18-minute meeting became a note in 7 min 41 s (Codex in Fast mode) |
+| Transcription | 15–22 % character distance to two commercial Korean services, which differ from each other by 16–21 % |
+| Speakers | 0.78–0.94 frame agreement; meetings with many speakers are the weak spot |
+
+There is no human ground truth for these recordings, so the accuracy numbers are relative to
+commercial services, not absolute. Summary quality has been judged only by the author.
 
 ## Requirements
 
-- Apple Silicon Mac that stays on (tested: Mac mini M4, 16 GB; peak memory ~5 GB), macOS, logged in
-  (launchd user agents stop at the login screen; enable automatic login for unattended use).
-- [Homebrew](https://brew.sh) with `uv` and `ffmpeg`: `brew install uv ffmpeg`.
-- [Syncthing](https://syncthing.net) on the Mac and [Syncthing-Fork](https://github.com/Catfriend1/syncthing-android)
-  on the phone.
-- [Codex CLI](https://github.com/openai/codex), logged in with `codex login` (a ChatGPT plan works).
-  Optional fallback: Antigravity CLI (`agy`).
-- About 5.2 GB of disk for the models (downloaded once by the installer).
-- Tested with a Samsung Galaxy S25 Ultra (`Recordings/Voice Recorder`). Any phone that writes `.m4a`
-  files to a folder Syncthing can share should work.
+- **An Apple Silicon Mac** that stays on and logged in (16 GB tested). About 6 GB of disk for models.
+- **Homebrew** with `uv` and `ffmpeg`: `brew install uv ffmpeg`
+- **A summary engine:** [Codex CLI](https://github.com/openai/codex) (tested daily) or
+  [Claude Code](https://docs.anthropic.com/en/docs/claude-code), logged in with your subscription.
+  [Ollama](https://ollama.com) for local-only use is experimental.
+- **An Android phone** with [Syncthing-Fork](https://github.com/Catfriend1/syncthing-android) and
+  [Syncthing](https://syncthing.net) on the Mac. Tested with a Galaxy S25 Ultra's built-in recorder;
+  any recorder that saves `.m4a` files to a folder should work.
 
-## Setup
-
-**1. Install on the Mac** (or on another Mac over SSH with `HOST=<ssh-host>`):
+## Install
 
 ```sh
+brew install uv ffmpeg
+codex login                       # or: claude, then /login
+
 git clone https://github.com/minigold92/rec2vault.git && cd rec2vault
-REC_OUTPUT="$HOME/Obsidian/MyVault/Meetings" deploy/install.sh
+deploy/install.sh                 # creates ~/QuietClerk, downloads models, starts the service
+deploy/setup.sh open              # opens the setup screens in your browser
 ```
 
-The installer copies the app to `~/rec/app`, installs dependencies, runs the tests, downloads the
-models, writes `~/rec/settings.env` on first run and loads the launchd agent `local.rec.pipeline`.
-Re-run it to update; settings are kept.
+The setup screens walk through six steps: check this Mac, download models, choose the notes folder
+(inside your vault), choose engines and what they may receive, connect the phone, and a test
+recording. Then record five minutes or more on the phone and save.
 
-**2. Connect the phone.**
+<details>
+<summary><b>Connecting the phone by hand</b></summary>
 
 1. Pair the phone and the Mac in Syncthing.
-2. On the phone, in Syncthing-Fork, add the folder `Recordings/Voice Recorder`, type **Send Only**,
-   shared with the Mac. Exempt the app from battery optimization.
-3. On the Mac, accept the share with folder path `~/rec/inbox` and type **Receive Only**.
+2. On the phone, share `Recordings/Voice Recorder` as **Send Only** and exempt Syncthing-Fork from
+   battery optimization.
+3. On the Mac, accept the share into `~/QuietClerk/inbox` as **Receive Only**.
 
-Existing recordings will also sync but are skipped: only recordings made after `REC_SINCE` (set to
-the install time) are processed. To avoid copying them at all, add their names to the folder's
-ignore patterns on the Mac before accepting the share.
+Recordings made before the install time are skipped; pick older ones on the **Older recordings**
+screen. Syncthing-Fork 2.1.3: if the save button stays grey after choosing the folder, rotate the
+phone once.
+</details>
 
-> Syncthing-Fork 2.1.3 quirk: if the save (✓) button stays grey after choosing a folder, rotate the
-> phone to landscape and back; the button becomes active.
+<details>
+<summary><b>Update, status and uninstall</b></summary>
 
-**3. Log in to the CLI**: `codex login` on the Mac.
+```sh
+git pull && deploy/setup.sh update     # swaps in the new version, rolls back on failure
+deploy/setup.sh status                 # engine state as JSON
+deploy/setup.sh doctor                 # machine, models and service checks
 
-**4. Try it**: record five minutes or more and save. Watch `~/rec/logs/pipeline.log`; the note
-appears in `REC_OUTPUT`.
+# uninstall (your notes stay where they are)
+launchctl bootout gui/$(id -u)/local.quietclerk.serve
+rm ~/Library/LaunchAgents/local.quietclerk.serve.plist
+rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
+```
+</details>
+
+## Example note
+
+<details>
+<summary>Markdown the engine wrote for the fictional meeting above (excerpt)</summary>
+
+```markdown
+---
+title: Arbor Bikes App First-Screen Review
+date: '2026-11-12'
+started_at: '2026-11-12T14:00:00'
+duration_min: 1.5
+language: en
+type: meeting
+speakers:
+- 'S1: Meeting facilitator'
+- 'S2: Priya · Design representative'
+- 'S3: Leo · Backend representative'
+status: draft
+external_text_to:
+- codex
+---
+## Tasks
+- [ ] Measure unlock API latency and share the results (Leo / deadline to be set after checking the sprint). [[#^t10|00:53]] [[#^t11|01:02]] ^task-1
+- [ ] Prepare mockups (Priya / next Thursday). [[#^t12|01:06]] ^task-2
+
+## Meeting record
+
+> [!summary] Key summary
+>
+> - Buying or renewing ride passes accounted for 41% of support tickets last quarter; the pass button is currently two menu levels deep. [[#^t4|00:15]] [[#^t5|00:24]]
+> - Ride passes will move to the first screen, and the referral program will stay out of this release. [[#^t13|01:09]] [[#^t14|01:17]] [[#^t15|01:18]]
+
+## Decisions
+
+- Move ride passes to the first screen. [[#^t13|01:09]] [[#^t14|01:17]] [[#^t15|01:18]]
+
+## Full transcript
+
+**[00:53] S3**: Sure I'll measure the unlock API latency and share it I can't promise a date yet I need to check the sprint first ^t10
+
+## Notes
+```
+
+The script said "Harbor Bikes"; the transcript heard "Arbor". The full input, script and every
+intermediate file are in [docs/examples/demo-meeting-en](docs/examples/demo-meeting-en).
+</details>
 
 ## Configuration
 
-`~/rec/settings.env` (KEY=VALUE, read on every run; environment variables take precedence):
+Settings live in `~/QuietClerk/settings.toml` and are edited on the **Settings** screen. Changes
+apply from the next recording.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `REC_OUTPUT` | `~/rec/notes` | Folder for notes, ideally inside your Obsidian vault |
-| `REC_SINCE` | install time | Skip recordings made before this local time (`YYYY-MM-DD HH:MM`) |
-| `REC_MIN_DURATION_SEC` | `300` | Skip shorter recordings |
-| `REC_STABLE_SEC` | `60` | A file must stay unchanged this long before processing |
-| `REC_CODEX_EFFORT` | `low` | Codex reasoning effort for pipeline calls |
-| `REC_AGY_MODEL` | `gemini-4-argon-medium` | Model for the `agy` fallback |
+| `output` | `~/QuietClerk/notes` | Notes folder, ideally inside your Obsidian vault |
+| `since` | install time | Skip recordings made before this time |
+| `min_duration_sec` | `300` | Skip shorter recordings |
+| `language.mode` | `auto` | `auto`, `ko` or `en` |
+| `notes.output_language` | `same` | Write notes in the meeting's language, or always `ko`/`en` |
+| `providers.order` | — | Engines to try, in order (`codex`, `claude`, `ollama`, `omp`) |
+| `providers.consent` | — | Fields each engine may receive |
+| `providers.local_only` | `false` | Block every external engine |
+| `providers.codex.speed` | `standard` | `fast` uses Codex Fast mode (about 1.4× faster, more plan usage) |
 
-Install-time only: `REC_LABEL` (launchd label, default `local.rec.pipeline`).
-
-Process a recording from before `REC_SINCE`:
-
-```sh
-cd ~/rec/app && .venv/bin/python -m rec.backfill "음성 261106_142617.m4a"
-```
-
-This adds the name to `~/rec/include.txt` and removes it from the inbox folder's Syncthing ignore
-patterns; the next run handles it like a new recording. Call recordings (`통화*`) are never processed.
-
-## Data and privacy
-
-- Audio files stay on your phone and your Mac. Transcription and diarization run locally; models are
-  downloaded once and the pipeline runs with `HF_HUB_OFFLINE=1`.
-- The **text** transcript is sent to the CLI's provider (OpenAI for Codex, Google for `agy`) for
-  correction and summarization, under your account's data settings.
-- Recording other people requires their consent. Work meetings may also require your organization's
-  approval before transcripts go to an external AI service.
+Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY` and
+`QC_PORT` override the file.
 
 ## Limitations
 
-- Korean only: the ASR language, prompts and note properties are Korean.
-- macOS on Apple Silicon only (MLX).
-- Many-speaker meetings (5+) diarize noticeably worse (speaker agreement ~0.78 in the benchmark).
-- Summary quality has not been evaluated against human-written minutes.
-- If the Codex login expires and `agy` is not installed, jobs fail after 3 attempts; the transcript
-  stages are kept, so re-queuing resumes at the summary.
+- macOS on Apple Silicon only (MLX). A CUDA backend for Windows and Linux is on the roadmap.
+- Meetings with five or more speakers diarize noticeably worse; overlapping speech is not separated.
+- Notes are drafts. Check decisions and tasks against their linked lines before relying on them.
+- Some screens still show disabled buttons for features without an API yet (model download
+  progress, restoring deleted recordings, automatic Syncthing pairing).
 
 ## Development
 
 ```sh
-uv run --no-project --with pytest python -m pytest -q tests
+uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn \
+  --with jinja2 --with httpx --with jsonschema python -m pytest -q tests
 ```
 
-| Path | Role |
-|---|---|
-| `rec/tick.py` | One pass: scan the inbox, then process queued jobs stage by stage |
-| `rec/intake.py` | Stability check, validation, dedupe by SHA-256, archive, enqueue |
-| `rec/models.py` | Local model stages, each in its own process (`diarize`, `asr`, `alt`, `prefetch`) |
-| `rec/transcript.py` | Word → speaker-turn alignment |
-| `rec/postprocess.py`, `rec/llm.py` | Correction, classification, summary through the CLIs |
-| `rec/render.py` | Obsidian note, properties, citation links, Bases view |
-| `rec/syncthing.py`, `rec/backfill.py` | Syncthing REST calls, processing older recordings |
-| `deploy/` | Installer, setup script, launchd template |
+The tests use synthetic audio and fake engines; they do not load MLX models. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the layout and how to propose changes, and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ## Related projects
 
-Pieces of this pipeline exist elsewhere; as far as a search on 2026-11-09 found, not this combination
-(Android built-in recorder → Syncthing → local Korean ASR and diarization on MLX → subscription-CLI
-summary → Obsidian note with line-level citation links). Worth a look:
+Pieces of this exist elsewhere; this combination did not turn up in a search on 2026-11-09.
 
-- [silverstein/minutes](https://github.com/silverstein/minutes): local-first conversation memory; phone
-  folder sync, pyannote-rs diarization, summaries through `claude`/`codex` CLIs, Markdown output.
-- [sjoon21/Tractus](https://github.com/sjoon21/Tractus): Mac app with MLX Qwen3-ASR (Korean/English),
-  speaker detection and timestamp links, export to Obsidian.
-- [mindrepublic2018/plaud-obsidian-pipeline](https://github.com/mindrepublic2018/plaud-obsidian-pipeline):
-  Plaud recordings → Korean/English minutes in Obsidian.
-- [libaoming/meet-scribe](https://github.com/libaoming/meet-scribe): launchd watch folder → WhisperX +
-  pyannote → `claude -p` → Obsidian.
-- [fryktik99/local-first-daily-assistant](https://github.com/fryktik99/local-first-daily-assistant):
-  Syncthing inbox with a file-stability barrier and SQLite state.
-- [surfnterd/syncthing-partial-recordings](https://github.com/surfnterd/syncthing-partial-recordings):
-  why a watcher must never move or delete files in a Syncthing inbox (partial m4a files, deletions
-  propagating back to the phone). This pipeline only reads the inbox and copies stable files out.
-
-Samsung and Galaxy are trademarks of Samsung Electronics; Plaud is a trademark of its owner. This
-project is not affiliated with either.
+- [silverstein/minutes](https://github.com/silverstein/minutes): local-first conversation memory with phone sync, diarization and CLI summaries.
+- [sjoon21/Tractus](https://github.com/sjoon21/Tractus): Mac app with MLX Qwen3-ASR, speakers and Obsidian export.
+- [libaoming/meet-scribe](https://github.com/libaoming/meet-scribe): watch folder → WhisperX + pyannote → `claude -p` → Obsidian.
 
 ## License
 
-MIT for this code. Models keep their own licenses: Qwen3-ASR and Qwen3-ForcedAligner (Apache-2.0),
-NVIDIA Nemotron 3 Diarization (OpenMDW-1.1), Whisper (MIT).
+MIT for this code. The models keep their own licenses: Qwen3-ASR and Qwen3-ForcedAligner
+(Apache-2.0), NVIDIA Nemotron 3 Diarization (OpenMDW-1.1), Whisper (MIT).
+
+Samsung and Galaxy are trademarks of Samsung Electronics. This project is not affiliated with any
+recorder or AI vendor.

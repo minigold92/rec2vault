@@ -1,0 +1,39 @@
+{
+ "meta": {
+  "title": "Arbor Bikes App First-Screen Review",
+  "type": "meeting",
+  "type_confidence": "high",
+  "type_basis_id": "t13",
+  "division": "work",
+  "topics": [
+   "Moving ride passes to the first screen",
+   "Displaying the active pass with a renew button",
+   "Support tickets about buying and renewing ride passes",
+   "Measuring unlock API latency",
+   "Mockups due next Thursday"
+  ],
+  "project": null,
+  "project_suggest": "Arbor Bikes app",
+  "speakers": {
+   "S1": {
+    "role": "Meeting facilitator",
+    "name": null,
+    "name_id": null,
+    "split_suspect": false
+   },
+   "S2": {
+    "role": "Design representative",
+    "name": "Priya",
+    "name_id": "t2",
+    "split_suspect": false
+   },
+   "S3": {
+    "role": "Backend representative",
+    "name": "Leo",
+    "name_id": "t3",
+    "split_suspect": false
+   }
+  }
+ },
+ "engine": "codex"
+}

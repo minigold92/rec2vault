@@ -1,149 +1,265 @@
-# rec2vault
+<p align="center">
+  <img src="docs/assets/banner-ko.svg" alt="QuietClerk 맥서기: 폰으로 녹음하면 내 Mac이 받아 적고 Obsidian 회의록을 만듭니다" width="100%">
+</p>
 
-**안드로이드 폰 기본 녹음 앱으로 녹음하고 저장하면, 몇 분 뒤 화자가 구분된 한국어 회의록이 Obsidian
-볼트에 생깁니다. 받아쓰기는 내 Mac에서 합니다.**
+<p align="center">
+  <a href="https://github.com/minigold92/rec2vault/actions/workflows/test.yml"><img alt="tests" src="https://github.com/minigold92/rec2vault/actions/workflows/test.yml/badge.svg"></a>
+  <img alt="macOS Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-1e1f1c?logo=apple&logoColor=white">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-2f5bea?logo=python&logoColor=white">
+  <img alt="한국어·영어 회의" src="https://img.shields.io/badge/meetings-Korean%20%7C%20English-cfead4">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-e9e5da"></a>
+</p>
 
-[English README](README.md) · [한눈에 보는 소개 페이지](docs/overview.html)(내려받아 브라우저로 열기) · [벤치마크](docs/benchmark.md)
+<p align="center">
+  <a href="README.md">English</a> · <b>한국어</b> · <a href="docs/how-it-works.ko.md">동작 방식</a> · <a href="docs/benchmark.md">벤치마크</a>
+</p>
 
-Plaud 같은 AI 녹음기는 전용 녹음기와 클라우드 받아쓰기, 월 분량 구독을 묶어 팝니다. 안드로이드 폰은
-이미 녹음을 잘하고, Apple Silicon Mac은 음성 모델을 직접 돌릴 수 있습니다. 그래서 같은 네 단계를
-갖고 있는 장비로 채웠습니다.
+---
 
-| 단계 | Plaud | 이 프로젝트 |
+안드로이드 폰에 원래 있는 녹음 앱으로 회의를 녹음하고 저장하세요. 몇 분 뒤 Obsidian 볼트에
+회의록이 생깁니다. 누가 무슨 말을 했는지, 짧은 요약, 결정 사항과 할 일이 들어 있고, 모든 문장에는
+그 말이 나온 시각으로 가는 링크가 붙습니다.
+
+받아쓰기와 화자 구분은 **내 Mac 안에서** 로컬 모델로 합니다. 이미 쓰고 있는 AI 명령줄 도구(Codex CLI,
+Claude Code)에는 글자만 보내 다듬고 요약하며, 로컬 전용 모드에서는 아무 데도 보내지 않습니다.
+
+> [!NOTE]
+> **개발자 미리보기입니다.** Mac mini 한 대에서 한국어 업무 회의로 매일 쓰고 있습니다. 설치에 터미널과
+> 10분 정도가 필요합니다. 서명된 Mac 앱은 계획 중입니다.
+
+<p align="center">
+  <img src="docs/assets/ko-note.png" alt="회의록 화면: 근거 시각이 붙은 핵심 요약, 화자, 오디오 재생, 밖으로 보낸 정보" width="900">
+  <br><sub>가상 회의의 회의록 화면. 시각 버튼을 누르면 그 말이 나온 구간이 재생됩니다.</sub>
+</p>
+
+## 왜 만들었나
+
+AI 녹음기는 전용 기기에 클라우드 받아쓰기와 월 분량 요금제를 묶어 팝니다. 안드로이드 폰은 이미 녹음을
+잘 하고, Apple Silicon Mac은 음성 모델을 돌릴 수 있습니다. 그래서 가진 기기로 같은 일을 합니다.
+
+| | 전용 AI 녹음기 | QuietClerk |
 |---|---|---|
-| 녹음 | 전용 녹음기 | 폰 기본 녹음 앱 그대로 |
-| 옮기기 | 전용 앱 | Syncthing, 저장하면 자동 전송 |
-| AI 처리 | 업체 서버, 월 분량 한도 | 내 Mac에서 화자 분리·받아쓰기, 한도 없음 |
-| 결과 | 업체 앱 | Obsidian 볼트의 Markdown 노트 |
+| 녹음 | 녹음기 구입 | 폰 기본 녹음 앱 그대로 |
+| 받아쓰기 | 업체 클라우드, 분량 제한 | 내 Mac, 제한 없음 |
+| 요약 | 업체 모델 | 이미 구독 중인 CLI, 또는 로컬 모델 |
+| 결과 | 업체 앱 | Obsidian 볼트의 Markdown |
 
-## 무엇을 해 주나
+## 할 수 있는 것
 
-- 녹음을 저장한 뒤에는 할 일이 없습니다. launchd가 1분마다 새 파일을 확인하고, 실패하면 다시
-  시도하고, 같은 녹음을 두 번 처리하지 않습니다.
-- 화자 분리와 한국어 받아쓰기는 Mac 안에서(MLX) 합니다. **녹음 파일은 내 기기 밖으로 나가지
-  않습니다.**
-- 이미 쓰는 구독 CLI(Codex CLI, 선택으로 Gemini 계열 `agy`)가 잘못 들은 단어를 고치고, 회의 유형을
-  나누고, 제목을 짓고, 유형(회의·현황공유·발표회·강의·1:1·브레인스토밍)에 맞는 양식으로 요약합니다.
-- 요약 문장마다 근거 발언으로 이동하는 링크(`[[#^t012|02:20]]`)가 붙어 원문과 대조할 수 있습니다.
-- 파일명은 `YYYY-MM-DD_<제목>_<HHMM>.md`이고, 날짜·시작 시각·길이·유형·주제·화자·원본 파일명과
-  해시를 속성으로 넣어 Obsidian Bases로 정렬·필터할 수 있습니다. 노트 폴더에 `회의록.base`가 생깁니다.
+- **손댈 일이 없습니다.** 녹음을 저장하면 끝입니다. 폰이 파일을 보내고, Mac은 파일이 더 바뀌지 않을 때
+  가져가 회의록을 만듭니다. 실패한 단계는 다시 시도하고, 같은 녹음을 두 번 처리하지 않습니다.
+- **화자와 시각.** 화자 구분(NVIDIA Nemotron 3)과 받아쓰기(Qwen3-ASR 1.7B와 단어 정렬, Whisper 2차
+  받아쓰기)를 MLX로 Apple Silicon에서 돌립니다.
+- **짧고 확인하기 쉬운 회의록.** 핵심 요약, 결정 사항, 미해결, 담당자·기한이 붙은 할 일. 문장마다
+  `[[#^t12|01:23]]` 같은 링크가 있어 근거 대화를 바로 확인할 수 있습니다.
+- **고친 내용은 지켜집니다.** Obsidian에서 제목을 바꾸고 할 일을 체크하고 메모를 써도, 요약을 다시
+  만들 때 엔진이 쓴 부분만 바뀝니다.
+- **한국어와 영어.** 녹음마다 언어를 감지하고, 회의 언어(또는 정해 둔 언어)로 회의록을 씁니다.
+- **밖으로 나가는 것을 직접 정합니다.** 글자를 받을 엔진과 보낼 항목(대화록, 파일 이름, 프로젝트
+  목록)을 고릅니다. 로컬 전용 모드는 외부 호출을 모두 막습니다.
 
-Mac mini M4(16GB)에서 35분 녹음이 약 13.5분 뒤 회의록이 됩니다. 로컬 받아쓰기와 상용 서비스 두 곳의
-차이는 두 상용 서비스끼리의 차이와 비슷합니다([벤치마크](docs/benchmark.md)).
+## 화면
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/assets/ko-home.png" alt="홈: 엔진·폰·요약 엔진·디스크 상태와 지금 처리 중인 녹음"></td>
+    <td width="33%"><img src="docs/assets/ko-jobs.png" alt="작업: 녹음별 상태와 건너뛰거나 실패한 이유"></td>
+    <td width="33%"><img src="docs/assets/ko-setup-4.png" alt="설정 4단계: 요약 엔진, 순서, 받는 글자 범위 선택"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>홈</b> · 지금 무슨 일이 일어나는지</sub></td>
+    <td align="center"><sub><b>작업</b> · 왜 건너뛰거나 실패했는지</sub></td>
+    <td align="center"><sub><b>설정</b> · 엔진과 보내는 범위</sub></td>
+  </tr>
+</table>
+
+화면은 엔진이 `127.0.0.1`에서만 열고, 한 번 쓰는 로그인 토큰으로 들어갑니다.
 
 ## 동작 방식
 
-**가상 회의 한 건의 실제 중간 결과로 단계별 설명: [docs/how-it-works.ko.md](docs/how-it-works.ko.md)**
+```mermaid
+flowchart LR
+  P["📱 폰 녹음 앱<br/>.m4a"] -->|Syncthing| I["Mac 받는 폴더<br/>(읽기만 함)"]
+  I --> Q{"전송 끝 · 새 녹음 · 충분히 긴가?"}
+  Q --> L["🔒 내 Mac 안에서<br/>화자 구분 · 언어 감지<br/>받아쓰기 · 2차 받아쓰기"]
+  L --> T["화자별 발언"]
+  T -->|"글자만"| C["내 CLI<br/>교정 · 분류 · 요약"]
+  C --> N["📝 Obsidian 회의록<br/>+ Bases 보기"]
+```
 
-폰 녹음(m4a) → Syncthing → Mac `~/rec/inbox` → 60초 안정·중복·5분 이상 확인 → 화자 분리(Nemotron 3)
-→ 받아쓰기(Qwen3-ASR 1.7B + 정렬) → 2차 받아쓰기(Whisper large-v3 turbo) → 오인식 보정(Codex) →
-분류·제목 → 근거 링크가 달린 요약 → Obsidian 노트
+상주 서비스 하나(`quietclerk serve`, launchd 에이전트)가 받는 폴더를 지켜보며 한 번에 녹음 하나씩
+처리합니다. 단계마다 결과를 남기므로 중간에 멈춘 작업은 멈춘 곳부터 이어 합니다. 로컬 모델은 별도
+프로세스로 돌고 처음 한 번만 내려받습니다. 가상 회의 하나의 실제 중간 결과로 단계를 따라가는 설명은
+**[docs/how-it-works.ko.md](docs/how-it-works.ko.md)** 에 있습니다.
 
-단계마다 결과를 `~/rec/work/<job_id>/`에 저장해, 중간에 끊기거나 실패하면 실패한 단계부터 이어서
-합니다(5분 간격 최대 3번). 작업 상태는 SQLite(`~/rec/state.sqlite3`)에 있습니다. CLI에는 대화록
-글자만 보내고, 대화록 안의 지시문은 데이터로만 다루게 합니다.
+### 밖으로 나가는 것
+
+| 데이터 | 가는 곳 |
+|---|---|
+| 음성 | 아무 데도. 폰 → 내 Mac(Syncthing), Mac 안에서 처리 |
+| 대화록 글자 | 켜 둔 엔진에, 동의한 항목만. 로컬 전용 모드에서는 없음 |
+| 파일 이름, 프로젝트 목록 | 보내기로 동의했을 때만(제목·프로젝트 정할 때 사용) |
+| 회의록 | 내 볼트 폴더. 회의록에 글자를 받은 엔진이 적힙니다 |
+
+모델은 처음 설치할 때 Hugging Face에서 내려받고, 처리할 때는 `HF_HUB_OFFLINE=1`로 돌립니다.
+
+## 속도와 정확도
+
+**Mac mini M4(16GB)** 에서 실제 한국어 업무 회의로 쟀습니다([자세히](docs/benchmark.md)).
+
+| | |
+|---|---|
+| 로컬 단계 | 녹음 길이의 약 0.11~0.12배, 메모리 최대 약 5GB |
+| 처음부터 끝까지 | 18분 회의가 7분 41초 만에 회의록이 됨(Codex Fast 모드) |
+| 받아쓰기 | 상용 한국어 서비스 2곳과 글자 기준 15~22% 차이. 두 서비스끼리도 16~21% 다름 |
+| 화자 | 구간 일치율 0.78~0.94. 화자가 많은 회의가 약점 |
+
+이 녹음들에는 사람이 만든 정답이 없어서, 정확도는 상용 서비스와의 상대 비교입니다. 요약 품질은
+만든 사람만 판단했습니다.
 
 ## 준비물
 
-- 계속 켜 둘 Apple Silicon Mac(Mac mini M4 16GB에서 시험, 최대 메모리 약 5GB). 로그인 상태여야
-  합니다. 사람 없이 돌리려면 자동 로그인을 켜 두세요.
-- Homebrew와 `uv`, `ffmpeg`: `brew install uv ffmpeg`
-- Mac에 [Syncthing](https://syncthing.net), 폰에 [Syncthing-Fork](https://github.com/Catfriend1/syncthing-android)
-- [Codex CLI](https://github.com/openai/codex), `codex login`으로 로그인(ChatGPT 요금제 가능). 대체 경로로
-  Antigravity CLI(`agy`)를 선택해서 설치할 수 있습니다.
-- 모델용 디스크 약 5.2GB(설치할 때 한 번 내려받음)
-- 갤럭시 S25 Ultra(`Recordings/Voice Recorder`)에서 시험했습니다. `.m4a`를 Syncthing으로 공유할 수 있는
-  폴더에 저장하는 폰이면 됩니다.
+- **Apple Silicon Mac**: 켜져 있고 로그인된 상태(16GB에서 확인). 모델용 디스크 약 6GB.
+- **Homebrew와 `uv`, `ffmpeg`**: `brew install uv ffmpeg`
+- **요약 엔진**: [Codex CLI](https://github.com/openai/codex)(매일 사용 중) 또는
+  [Claude Code](https://docs.anthropic.com/en/docs/claude-code), 구독 계정으로 로그인.
+  로컬 전용용 [Ollama](https://ollama.com)는 실험 단계입니다.
+- **안드로이드 폰**: [Syncthing-Fork](https://github.com/Catfriend1/syncthing-android), Mac에는
+  [Syncthing](https://syncthing.net). 갤럭시 S25 Ultra 기본 녹음 앱으로 확인했고, 폴더에 `.m4a`를
+  저장하는 녹음 앱이면 됩니다.
 
 ## 설치
 
-**1. Mac에 설치** (다른 Mac에 SSH로 설치하려면 앞에 `HOST=<ssh 호스트>`):
-
 ```sh
+brew install uv ffmpeg
+codex login                       # 또는 claude 실행 후 /login
+
 git clone https://github.com/minigold92/rec2vault.git && cd rec2vault
-REC_OUTPUT="$HOME/Obsidian/MyVault/회의록" deploy/install.sh
+deploy/install.sh                 # ~/QuietClerk 생성, 모델 내려받기, 서비스 시작
+deploy/setup.sh open              # 브라우저로 설정 화면 열기
 ```
 
-앱을 `~/rec/app`에 복사하고, 의존성 설치, 테스트, 모델 내려받기를 한 뒤, 처음이면 `~/rec/settings.env`를
-만들고 launchd 에이전트 `local.rec.pipeline`을 올립니다. 업데이트도 같은 명령이고 설정은 유지됩니다.
+설정 화면은 여섯 단계입니다. 이 Mac 점검, 모델 내려받기, 회의록 폴더(볼트 안) 고르기, 엔진과 보낼
+범위 고르기, 폰 연결, 시험 녹음. 그다음 폰으로 5분 이상 녹음하고 저장하세요.
 
-**2. 폰 연결**
+<details>
+<summary><b>폰을 직접 연결할 때</b></summary>
 
-1. Syncthing에서 폰과 Mac을 연결합니다.
-2. 폰 Syncthing-Fork에서 `Recordings/Voice Recorder` 폴더를 **보내기 전용**으로 추가해 Mac과
-   공유합니다. 배터리 최적화 예외로 설정합니다.
-3. Mac에서 공유를 수락하고 경로를 `~/rec/inbox`, 유형을 **받기 전용**으로 지정합니다.
+1. Syncthing에서 폰과 Mac을 짝지읍니다.
+2. 폰에서 `Recordings/Voice Recorder`를 **보내기 전용**으로 공유하고, Syncthing-Fork를 배터리 최적화
+   예외로 둡니다.
+3. Mac에서 공유를 `~/QuietClerk/inbox`에 **받기 전용**으로 수락합니다.
 
-기존 녹음도 넘어오지만 처리하지 않습니다. 설치 시각(`REC_SINCE`) 이후 녹음만 처리합니다. 아예
-안 넘어오게 하려면 수락하기 전에 Mac 쪽 폴더의 무시 패턴에 기존 파일 이름을 넣으세요.
+설치 시각 이전 녹음은 건너뜁니다. 예전 녹음은 **기존 녹음** 화면에서 골라 넣으세요. Syncthing-Fork
+2.1.3에서 폴더를 고른 뒤 저장 버튼이 회색이면 폰을 한 번 돌려 보세요.
+</details>
 
-> Syncthing-Fork 2.1.3에서 폴더를 고른 뒤에도 저장(✓) 버튼이 회색이면 화면을 가로로 돌렸다가
-> 되돌리면 눌립니다.
+<details>
+<summary><b>업데이트, 상태 보기, 지우기</b></summary>
 
-**3. CLI 로그인**: Mac에서 `codex login`
+```sh
+git pull && deploy/setup.sh update     # 새 버전으로 서비스 교체, 실패하면 이전 상태로 되돌림
+deploy/setup.sh status                 # 엔진 상태(JSON)
+deploy/setup.sh doctor                 # 기기·모델·서비스 점검
 
-**4. 확인**: 5분 넘게 녹음하고 저장한 뒤 `~/rec/logs/pipeline.log`를 보면, `REC_OUTPUT` 폴더에 노트가 생깁니다.
+# 지우기(회의록은 그대로 남습니다)
+launchctl bootout gui/$(id -u)/local.quietclerk.serve
+rm ~/Library/LaunchAgents/local.quietclerk.serve.plist
+rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
+```
+</details>
+
+## 회의록 예시
+
+<details>
+<summary>위 가상 회의로 엔진이 쓴 Markdown(발췌)</summary>
+
+```markdown
+---
+title: 책마루 홈 화면 개편과 대출 연장 기능 논의
+date: '2026-11-10'
+started_at: '2026-11-10T10:00:00'
+duration_min: 2.6
+language: ko
+type: meeting
+speakers:
+- 'S1: 회의 진행 및 개편 범위·결정 사항 정리'
+- 'S2: 오지안 · 홈 화면 디자인 제안 및 시안 작성, 서버 담당자 자기소개도 혼재'
+- 'S3: 대출 연장 API 응답 지연 문제 제기 및 응답 시간 측정 담당'
+status: draft
+external_text_to:
+- codex
+---
+## 할 일
+- [ ] 홈 화면 시안을 피그마에 올리고, 큰 글자 버전과 현재 글자 크기 버전을 포함한다. (오지안 / 다음 주 금요일) [[#^t11|01:33]] [[#^t13|01:45]] [[#^t16|02:22]] ^task-1
+- [ ] 대출 연장 API 응답 시간을 측정해 공유한다. (S3, 실명 확인 필요 / 개발팀 일정 확인 후 결정) [[#^t8|01:10]] [[#^t9|01:16]] [[#^t10|01:24]] [[#^t16|02:22]] ^task-2
+
+## 회의 내용
+
+> [!summary] 핵심 요약
+> - 책마루 앱의 최근 3개월 문의 중 대출 연장 관련 문의가 38%였다. [[#^t3|00:23]]
+> - 홈 화면 첫 칸을 내 대출 현황으로 바꾸고 그 안에 대출 연장 버튼을 넣기로 했다. [[#^t14|01:59]] [[#^t15|02:18]]
+
+## 전체 대화록
+
+**[00:23] S1**: 먼저 배경부터 말씀드리겠습니다 최근 3개월 동안 들어온 앱 문의 중에서 대출 연장 관련 문의가 38%였습니다 ^t3
+
+## 메모
+```
+
+S2 역할에 "서버 담당자 자기소개도 혼재"가 붙은 것은 화자 구분이 두 사람을 한 화자로 묶은 구간을
+분류 단계가 알아챈 것입니다. 대본, 음성, 단계별 중간 파일은
+[docs/examples/demo-meeting](docs/examples/demo-meeting)에 있습니다.
+</details>
 
 ## 설정
 
-`~/rec/settings.env`(KEY=VALUE, 실행할 때마다 읽음, 같은 이름의 환경 변수가 우선):
+설정은 `~/QuietClerk/settings.toml`에 있고 **설정** 화면에서 바꿉니다. 다음 녹음부터 적용됩니다.
 
 | 키 | 기본값 | 뜻 |
 |---|---|---|
-| `REC_OUTPUT` | `~/rec/notes` | 노트 폴더. Obsidian 볼트 안을 권장 |
-| `REC_SINCE` | 설치 시각 | 이 시각 이전 녹음은 건너뜀(`YYYY-MM-DD HH:MM`) |
-| `REC_MIN_DURATION_SEC` | `300` | 이보다 짧은 녹음은 건너뜀 |
-| `REC_STABLE_SEC` | `60` | 파일이 이 시간 동안 그대로여야 처리 |
-| `REC_CODEX_EFFORT` | `low` | 파이프라인의 Codex 추론 강도 |
-| `REC_AGY_MODEL` | `gemini-4-argon-medium` | `agy` 대체 경로 모델 |
+| `output` | `~/QuietClerk/notes` | 회의록 폴더. Obsidian 볼트 안을 권장 |
+| `since` | 설치 시각 | 이 시각 이전 녹음은 건너뜀 |
+| `min_duration_sec` | `300` | 이보다 짧은 녹음은 건너뜀 |
+| `language.mode` | `auto` | `auto`, `ko`, `en` |
+| `notes.output_language` | `same` | 회의 언어로 쓰기, 또는 항상 `ko`/`en` |
+| `providers.order` | — | 시도할 엔진 순서(`codex`, `claude`, `ollama`, `omp`) |
+| `providers.consent` | — | 엔진마다 보낼 수 있는 항목 |
+| `providers.local_only` | `false` | 외부 엔진을 모두 막음 |
+| `providers.codex.speed` | `standard` | `fast`는 Codex Fast 모드(약 1.4배 빠름, 구독 사용량 더 씀) |
 
-설치할 때만: `REC_LABEL`(launchd 이름, 기본 `local.rec.pipeline`)
-
-`REC_SINCE` 이전 녹음을 골라 처리하기:
-
-```sh
-cd ~/rec/app && .venv/bin/python -m rec.backfill "음성 261106_142617.m4a"
-```
-
-이름을 `~/rec/include.txt`에 넣고 받는 폴더의 Syncthing 무시 패턴에서 지웁니다. 다음 주기에 새 녹음처럼
-처리합니다. 통화 녹음(`통화*`)은 처리하지 않습니다.
-
-## 데이터와 개인정보
-
-- 녹음 파일은 폰과 Mac에만 있습니다. 받아쓰기와 화자 분리는 로컬에서 하고, 모델은 한 번 내려받은 뒤
-  `HF_HUB_OFFLINE=1`로 돌립니다.
-- 보정과 요약을 위해 **대화록 글자**가 CLI 제공자(Codex는 OpenAI, `agy`는 Google)로 갑니다. 계정의
-  데이터 설정을 따릅니다.
-- 다른 사람의 목소리를 녹음하려면 동의가 필요합니다. 회사 회의는 대화록을 외부 AI 서비스로 보내기 전에
-  회사 승인이 필요할 수 있습니다.
+환경 변수 `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY`, `QC_PORT`가 파일보다
+우선합니다.
 
 ## 한계
 
-- 한국어 전용입니다(받아쓰기 언어, 프롬프트, 노트 속성).
-- Apple Silicon macOS 전용입니다(MLX).
-- 화자가 많은 회의(5명 이상)는 화자 구분이 눈에 띄게 나빠집니다(벤치마크 화자 일치율 약 0.78).
-- 요약 품질은 사람이 쓴 회의록과 비교해 평가하지 않았습니다.
-- Codex 로그인이 만료되고 `agy`도 없으면 3번 시도 후 실패로 남습니다. 받아쓰기 결과는 남아 있어 다시
-  대기열에 넣으면 요약부터 이어서 합니다.
+- Apple Silicon macOS 전용(MLX). Windows·Linux용 CUDA 백엔드는 계획에 있습니다.
+- 화자가 다섯 명 이상이면 화자 구분이 눈에 띄게 나빠지고, 겹쳐 말한 구간은 나누지 못합니다.
+- 회의록은 초안입니다. 결정과 할 일은 링크된 원문을 확인하고 쓰세요.
+- 아직 API가 없는 기능은 화면에서 버튼을 꺼 두었습니다(모델 내려받기 진행률, 지운 녹음 되살리기,
+  Syncthing 자동 짝짓기).
 
 ## 개발
 
 ```sh
-uv run --no-project --with pytest python -m pytest -q tests
+uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn \
+  --with jinja2 --with httpx --with jsonschema python -m pytest -q tests
 ```
 
-파일 구성은 [English README](README.md#development)를 보세요.
+테스트는 합성 음성과 가짜 엔진만 쓰며 MLX 모델을 불러오지 않습니다. 구조와 기여 방법은
+[CONTRIBUTING.md](CONTRIBUTING.md), 보안 문제 제보는 [SECURITY.md](SECURITY.md)를 보세요.
 
 ## 비슷한 프로젝트
 
-이 파이프라인의 조각들은 다른 곳에도 있습니다. 2026-11-09 검색한 범위에서는 이 조합(안드로이드 기본 녹음 앱 →
-Syncthing → MLX 로컬 한국어 받아쓰기·화자 분리 → 구독 CLI 요약 → 발언 단위 근거 링크가 있는 Obsidian 노트)을
-그대로 하는 공개 프로젝트는 찾지 못했습니다. 목록과 비교는 [English README](README.md#related-projects)에
-있습니다.
+부분은 다른 곳에도 있습니다. 2026-11-09 검색에서 이 조합 그대로인 프로젝트는 찾지 못했습니다.
 
-Samsung과 Galaxy는 삼성전자의 상표이고 Plaud는 해당 소유자의 상표입니다. 이 프로젝트는 어느 쪽과도 관계가 없습니다.
+- [silverstein/minutes](https://github.com/silverstein/minutes): 폰 동기화, 화자 구분, CLI 요약을 갖춘 로컬 우선 대화 기록.
+- [sjoon21/Tractus](https://github.com/sjoon21/Tractus): MLX Qwen3-ASR, 화자, Obsidian 내보내기를 갖춘 Mac 앱.
+- [libaoming/meet-scribe](https://github.com/libaoming/meet-scribe): 감시 폴더 → WhisperX + pyannote → `claude -p` → Obsidian.
 
 ## 라이선스
 
-이 코드는 MIT입니다. 모델은 각자의 라이선스를 따릅니다: Qwen3-ASR·Qwen3-ForcedAligner(Apache-2.0),
+이 코드는 MIT입니다. 모델은 각자의 라이선스를 따릅니다. Qwen3-ASR, Qwen3-ForcedAligner(Apache-2.0),
 NVIDIA Nemotron 3 Diarization(OpenMDW-1.1), Whisper(MIT).
+
+Samsung, Galaxy는 Samsung Electronics의 상표입니다. 이 프로젝트는 어떤 녹음기·AI 업체와도 관계가 없습니다.

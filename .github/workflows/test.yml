@@ -8,4 +8,4 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # The tests cover intake, correction/summary logic and rendering; they do not load MLX models.
-      - run: uv run --python 3.12 --no-project --with pytest python -m pytest -q tests
+      - run: uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn --with jinja2 --with httpx --with jsonschema python -m pytest -q tests

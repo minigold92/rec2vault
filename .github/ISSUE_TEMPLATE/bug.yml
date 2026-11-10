@@ -1,0 +1,33 @@
+name: Bug report
+description: Something did not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do **not** paste real meeting audio, transcripts, notes, names or file names.
+        Replace them with placeholders, or reproduce with a demo in `docs/examples`.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`deploy/setup.sh doctor` output"
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines from ~/QuietClerk/logs/pipeline.log
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Mac model, macOS version, phone and recorder app
+      placeholder: Mac mini M4 16 GB, macOS 26.5, Galaxy S25 Ultra built-in recorder

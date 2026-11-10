@@ -1,0 +1,8 @@
+since = "2026-01-01 00:00"
+min_duration_sec = 60
+stable_sec = 0
+"language.default" = "ko"
+"ui.language" = "ko"
+"providers.order" = ["codex"]
+"providers.codex.speed" = "fast"
+"providers.consent" = {codex = ["transcript", "source_name", "project_list"]}

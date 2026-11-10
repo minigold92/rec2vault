@@ -1,0 +1,24 @@
+{
+ "texts": [
+  "Hi everyone Let's start the Arbor Bikes app review Priya from Design is joining us today",
+  "Hi I'm Priya I'd like to walk through the new first screen",
+  "Hi Leo here I look after the backend",
+  "Some background first Over the last quarter forty-one percent of support tickets were about buying or renewing ride passes",
+  "That matches what we see in testing The pass button is hidden two levels deep in the menu",
+  "So the question is whether ride passes should move to the first screen",
+  "I'd say yes Show the active pass at the top with a renew button right there",
+  "I agree One concern though Unlocking a bike currently takes two point three seconds Seconds at the median and people tap twice when it's slow",
+  "Can you measure that properly before we commit to a design",
+  "Sure I'll measure the unlock API latency and share it I can't promise a date yet I need to check the sprint first",
+  "Fine we'll set the deadline once you've checked",
+  "I'll have the mockups ready by next Thursday",
+  "Great So we agree Passes move to the first screen and the referral program stays out of this release",
+  "Agreed",
+  "Agreed One thing we haven't settled is whether to keep the old map view for older phones",
+  "Let's leave that open and revisit it next week Thanks everyone"
+ ],
+ "notes": [
+  "correct 0-15: codex"
+ ],
+ "turns_sha256": "c0f44e8b5005832482782ac4a9178480b08cf1613a28b342270e4760a616bc3e"
+}

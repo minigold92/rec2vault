@@ -1,0 +1,203 @@
+{
+  "recorded_at": "2026-11-10T00:25:57.451124+09:00",
+  "verification_level": "synthetic inputs on real MLX models; not real recordings",
+  "runtime": "macOS-27.0.1-arm64-arm-64bit",
+  "timing_note": "One successful timed worker invocation per stage; elapsed process wall time includes model load and output writing. No speed comparison. Shared workstation. Eight final invocations succeeded.",
+  "prefetch_seconds": 555.07,
+  "chunk_rule_version": 2,
+  "timing_tolerance_sec": 0.5,
+  "samples": {
+    "ko": {
+      "synthetic": true,
+      "duration_sec": 157.2890625,
+      "wav_sha256": "ca0b303a9291de0272ec7940c9ac3281c72ef7f27dd0fe91966a32208d790d18",
+      "language": {
+        "status": "decided",
+        "top": "ko",
+        "shares": {
+          "ko": 1.0
+        },
+        "windows": [
+          {
+            "start": 1.09,
+            "end": 8.52
+          },
+          {
+            "start": 32.97,
+            "end": 40.78
+          },
+          {
+            "start": 52.4296875,
+            "end": 58.58
+          },
+          {
+            "start": 94.08,
+            "end": 98.73
+          },
+          {
+            "start": 105.61,
+            "end": 111.76
+          },
+          {
+            "start": 145.51,
+            "end": 152.88
+          }
+        ]
+      },
+      "primary_word_count": 233,
+      "second_pass_word_count": 225
+    },
+    "en": {
+      "synthetic": true,
+      "duration_sec": 61.1445,
+      "wav_sha256": "5cdad6fc77469d1f01a6e4b284a5cd3fb669179abc56d5297c8e130564eae6dc",
+      "language": {
+        "status": "decided",
+        "top": "en",
+        "shares": {
+          "en": 1.0
+        },
+        "windows": [
+          {
+            "start": 0.0,
+            "end": 10.19075
+          },
+          {
+            "start": 10.19075,
+            "end": 20.3815
+          },
+          {
+            "start": 20.3815,
+            "end": 30.57225
+          },
+          {
+            "start": 31.080000000000002,
+            "end": 40.763
+          },
+          {
+            "start": 40.763,
+            "end": 50.95375000000001
+          },
+          {
+            "start": 50.95375000000001,
+            "end": 60.94
+          }
+        ]
+      },
+      "primary_word_count": 162,
+      "second_pass_word_count": 162,
+      "source": [
+        {
+          "voice": "Samantha",
+          "text": "Good morning everyone. Today we are reviewing the launch plan for the new customer portal. The design team finished the first prototype yesterday. We need to decide whether the next release should focus on search or account settings. My recommendation is to improve search first, because customers told us that finding documents takes too long. Before we begin development, we should check the current support tickets and identify the three most common search problems. That will help us choose useful improvements."
+        },
+        {
+          "voice": "Daniel",
+          "text": "Thank you. I agree that search should come first. The engineering team can deliver an initial version in two weeks. We should also schedule a short usability study with five volunteers. I will prepare the test plan by Friday. Please send me your feedback tomorrow, and we will confirm the release date at our next meeting. That sounds sensible. I will also ask the support team to join the study so that we can compare their feedback with the volunteer interviews."
+        }
+      ],
+      "primary_text": "Good morning everyone Today we are reviewing the launch plan for the new customer portal The design team finished the first prototype yesterday We need to decide whether the next release should focus on search or account settings My recommendation is to improve search first because customers told us that finding documents takes too long Before we begin development we should check the current support tickets and identify the three most common search problems That will help us choose useful improvements Thank you I agree that search should come first The engineering team can deliver an initial version in two weeks We should also schedule a short usability study with five volunteers I will prepare the test plan by Friday Please send me your feedback tomorrow and we will confirm the release date at our next meeting That sounds sensible I will also ask the support team to join the study so that we can compare their feedback with the volunteer interviews",
+      "normalized_words_match_reference": true,
+      "spurious_okay_present": false
+    }
+  },
+  "successful_worker_runs": [
+    {
+      "language": "ko",
+      "stage": "diarize",
+      "seconds": 10.894,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"diarize\"}\n{\"type\": \"result\", \"models\": {\"diarize\": \"mlx-community/Nemotron-3-Diarization@59ed2dbfc1346dcea9d423c71306a3a2499c568f\"}, \"output\": \".pytest_cache/model-evidence/ko-diarize.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "ko",
+      "stage": "detect_language",
+      "seconds": 15.249,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"detect_language\"}\n{\"type\": \"result\", \"models\": {\"whisper\": \"mlx-community/whisper-large-v3-turbo@a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb\"}, \"output\": \".pytest_cache/model-evidence/ko-detect_language.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "ko",
+      "stage": "second_pass",
+      "seconds": 7.569,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"second_pass\"}\n{\"type\": \"result\", \"models\": {\"whisper\": \"mlx-community/whisper-large-v3-turbo@a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb\"}, \"output\": \".pytest_cache/model-evidence/ko-second_pass.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "ko",
+      "stage": "transcribe",
+      "seconds": 10.2,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"transcribe\"}\n{\"type\": \"result\", \"models\": {\"asr\": \"mlx-community/Qwen3-ASR-1.7B-8bit@a8379a2e2f9e313c9292cdf1af4055ab56d50d55\", \"aligner\": \"mlx-community/Qwen3-ForcedAligner-0.6B-8bit@0e1a68e91d815300c7c9754b2a7639378b23db15\"}, \"output\": \".pytest_cache/model-evidence/ko-transcribe.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "en",
+      "stage": "diarize",
+      "seconds": 1.628,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"diarize\"}\n{\"type\": \"result\", \"models\": {\"diarize\": \"mlx-community/Nemotron-3-Diarization@59ed2dbfc1346dcea9d423c71306a3a2499c568f\"}, \"output\": \".pytest_cache/model-evidence/en-diarize.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "en",
+      "stage": "detect_language",
+      "seconds": 3.793,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"detect_language\"}\n{\"type\": \"result\", \"models\": {\"whisper\": \"mlx-community/whisper-large-v3-turbo@a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb\"}, \"output\": \".pytest_cache/model-evidence/en-detect_language.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "en",
+      "stage": "transcribe",
+      "seconds": 4.605,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"transcribe\"}\n{\"type\": \"result\", \"models\": {\"asr\": \"mlx-community/Qwen3-ASR-1.7B-8bit@a8379a2e2f9e313c9292cdf1af4055ab56d50d55\", \"aligner\": \"mlx-community/Qwen3-ForcedAligner-0.6B-8bit@0e1a68e91d815300c7c9754b2a7639378b23db15\"}, \"output\": \".pytest_cache/model-evidence/en-transcribe.json\"}\n",
+      "stderr": ""
+    },
+    {
+      "language": "en",
+      "stage": "second_pass",
+      "seconds": 3.704,
+      "exit_code": 0,
+      "stdout": "{\"type\": \"progress\", \"stage\": \"second_pass\"}\n{\"type\": \"result\", \"models\": {\"whisper\": \"mlx-community/whisper-large-v3-turbo@a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb\"}, \"output\": \".pytest_cache/model-evidence/en-second_pass.json\"}\n",
+      "stderr": ""
+    }
+  ],
+  "observed_before_rule_change": {
+    "duration_sec": 61.1445,
+    "word": "Okay",
+    "start": 61.25449999999999,
+    "end": 61.25449999999999,
+    "failure": "InvalidOutput under original strict timing and fixed 60 second tail split",
+    "runs": [
+      {
+        "language": "en",
+        "stage": "diarize",
+        "seconds": 1.714,
+        "exit_code": 0,
+        "stdout": "{\"type\": \"progress\", \"stage\": \"diarize\"}\n{\"type\": \"result\", \"models\": {\"diarize\": \"mlx-community/Nemotron-3-Diarization@59ed2dbfc1346dcea9d423c71306a3a2499c568f\"}, \"output\": \".pytest_cache/model-evidence/en-diarize.json\"}\n",
+        "stderr": ""
+      },
+      {
+        "language": "en",
+        "stage": "detect_language",
+        "seconds": 2.768,
+        "exit_code": 0,
+        "stdout": "{\"type\": \"progress\", \"stage\": \"detect_language\"}\n{\"type\": \"result\", \"models\": {\"whisper\": \"mlx-community/whisper-large-v3-turbo@a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb\"}, \"output\": \".pytest_cache/model-evidence/en-detect_language.json\"}\n",
+        "stderr": ""
+      },
+      {
+        "language": "en",
+        "stage": "transcribe",
+        "seconds": 5.31,
+        "exit_code": 1,
+        "stdout": "{\"type\": \"progress\", \"stage\": \"transcribe\"}\n",
+        "stderr": "{\"error\": \"InvalidOutput\", \"detail\": \"invalid or unordered segment timing\"}\n"
+      }
+    ]
+  }
+}

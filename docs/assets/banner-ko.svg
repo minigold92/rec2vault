@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" width="1280" height="420" role="img" aria-label="QuietClerk 맥서기: 폰으로 녹음하면 내 Mac이 받아 적고 Obsidian 회의록을 만듭니다">
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#f0ede4" stroke-width="1"/>
+    </pattern>
+    <style>
+      .t { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Segoe UI", sans-serif; fill: #1e1f1c; }
+      .b { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Segoe UI", sans-serif; fill: #3a3c37; }
+      .m { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; fill: #5d625b; }
+    </style>
+  </defs>
+  <rect x="2" y="2" width="1276" height="416" rx="28" fill="#fbfaf6"/>
+  <rect x="2" y="2" width="1276" height="416" rx="28" fill="url(#grid)"/>
+  <rect x="2" y="2" width="1276" height="416" rx="28" fill="none" stroke="#1e1f1c" stroke-width="3"/>
+
+  <!-- mascot (맥서기) -->
+  <g transform="translate(70 70) scale(1.25)">
+    <ellipse cx="100" cy="164" rx="76" ry="6" fill="#e5e1d4"/>
+    <g stroke="#1e1f1c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M24 74 Q100 -14 176 74" fill="none" stroke-width="8"/>
+      <rect x="24" y="44" width="152" height="110" rx="32" fill="#eceef0"/>
+      <path d="M42 134 H158" fill="none" stroke-width="2.5" opacity=".45"/>
+      <rect x="8" y="62" width="28" height="48" rx="12" fill="#2f5bea"/>
+      <rect x="164" y="62" width="28" height="48" rx="12" fill="#2f5bea"/>
+    </g>
+    <circle cx="150" cy="134" r="3" fill="#3fbf7a"/>
+    <ellipse cx="62" cy="106" rx="10" ry="5.5" fill="#ffb3c0" opacity=".85"/>
+    <ellipse cx="138" cy="106" rx="10" ry="5.5" fill="#ffb3c0" opacity=".85"/>
+    <circle cx="78" cy="88" r="6" fill="#1e1f1c"/><circle cx="122" cy="88" r="6" fill="#1e1f1c"/>
+    <path d="M88 122 Q100 132 112 122" fill="none" stroke="#1e1f1c" stroke-width="4" stroke-linecap="round"/>
+    <g stroke="#1e1f1c" stroke-width="3.5" fill="#fff" fill-opacity=".35"><circle cx="78" cy="88" r="17"/><circle cx="122" cy="88" r="17"/><path d="M95 88 H105" fill="none"/></g>
+  </g>
+
+  <text x="360" y="128" class="t" font-size="76" font-weight="800" letter-spacing="-1.5">QuietClerk <tspan font-size="40" font-weight="700" fill="#5d625b" letter-spacing="0">맥서기</tspan></text>
+  <text x="362" y="176" class="b" font-size="27" font-weight="500">폰 기본 녹음 앱으로 녹음하면, 내 Mac이 받아 적고</text>
+  <text x="362" y="212" class="b" font-size="27" font-weight="500">화자를 나눠 Obsidian 회의록을 만들어 줍니다.</text>
+
+  <!-- pipeline -->
+  <g font-size="19" font-weight="700">
+    <rect x="362" y="262" width="178" height="56" rx="14" fill="#ffffff" stroke="#1e1f1c" stroke-width="2"/>
+    <text x="451" y="297" class="t" text-anchor="middle">폰 녹음 앱</text>
+
+    <path d="M548 290 H586" stroke="#1e1f1c" stroke-width="2.5"/><path d="M580 283 L590 290 L580 297" fill="none" stroke="#1e1f1c" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <rect x="598" y="262" width="226" height="56" rx="14" fill="#e8eeff" stroke="#2f5bea" stroke-width="2"/>
+    <text x="711" y="287" class="t" text-anchor="middle">내 Mac</text>
+    <text x="711" y="308" class="m" text-anchor="middle" font-size="14" font-weight="500">화자 분리 + 받아쓰기</text>
+
+    <path d="M832 290 H870" stroke="#1e1f1c" stroke-width="2.5"/><path d="M864 283 L874 290 L864 297" fill="none" stroke="#1e1f1c" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <rect x="882" y="262" width="164" height="56" rx="14" fill="#ffffff" stroke="#1e1f1c" stroke-width="2"/>
+    <text x="964" y="287" class="t" text-anchor="middle">쓰던 AI CLI</text>
+    <text x="964" y="308" class="m" text-anchor="middle" font-size="14" font-weight="500">요약 (글자만)</text>
+
+    <path d="M1054 290 H1092" stroke="#1e1f1c" stroke-width="2.5"/><path d="M1086 283 L1096 290 L1086 297" fill="none" stroke="#1e1f1c" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <rect x="1104" y="262" width="132" height="56" rx="14" fill="#cfead4" stroke="#1e1f1c" stroke-width="2"/>
+    <text x="1170" y="297" class="t" text-anchor="middle">Obsidian</text>
+  </g>
+
+  <text x="362" y="366" class="m" font-size="16">음성은 내 기기 밖으로 안 나감 · 분 단위 요금 없음 · 요약 문장마다 원문 근거</text>
+</svg>

@@ -5,3 +5,4 @@ __pycache__/
 *.wav
 *.mp3
 .env
+!docs/examples/*/*.m4a

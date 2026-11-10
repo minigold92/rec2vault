@@ -1,18 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
 [project]
-name = "rec2vault"
+name = "quietclerk"
 version = "0.1.0"
 description = "Android recorder → local Korean transcription with diarization (MLX) → subscription-CLI summary → Obsidian notes"
 requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["meeting-notes", "transcription", "mlx", "obsidian", "local-first"]
+classifiers = [
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3.12",
+]
 dependencies = [
   "mlx-audio==0.6.4",
   "mlx-whisper==0.4.3",
   "soundfile",
   "numpy",
   "soynlp",
+  "PyYAML>=6",
+  "starlette",
+  "uvicorn",
+  "jinja2",
 ]
 
+[project.urls]
+Repository = "https://github.com/minigold92/rec2vault"
+Issues = "https://github.com/minigold92/rec2vault/issues"
+
+[project.scripts]
+quietclerk = "quietclerk.cli:main"
+
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest", "httpx", "jsonschema"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/quietclerk", "/deploy", "/tests", "/docs/examples", "/README.md", "/README.ko.md", "/LICENSE", "/pyproject.toml"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["quietclerk"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"deploy/launchd.plist.in" = "quietclerk/deploy/launchd.plist.in"

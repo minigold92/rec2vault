@@ -1,5 +1,11 @@
 import os
+import tempfile
 
-# Tests must not pick up the installed pipeline's ~/rec/settings.env (e.g. its REC_SINCE cutoff).
-# conftest is imported before the test modules import rec.config.
-os.environ["REC_SETTINGS"] = os.devnull
+# Never read an installed user's settings or data, even during module import.
+_ROOT = tempfile.TemporaryDirectory(prefix='quietclerk-tests-')
+for _key in list(os.environ):
+    if _key.startswith('QC_'):
+        del os.environ[_key]
+os.environ['QC_ROOT'] = _ROOT.name
+os.environ['QC_SETTINGS'] = os.devnull
+os.environ['QC_SINCE'] = '1970-01-01 00:00'

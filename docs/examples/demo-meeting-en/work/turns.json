@@ -1,0 +1,98 @@
+[
+ {
+  "start": 0.0,
+  "end": 6.08,
+  "speaker": "S1",
+  "text": "Hi everyone Let's start the ArborBikes app review Priya from Design is joining us today"
+ },
+ {
+  "start": 7.28,
+  "end": 10.64,
+  "speaker": "S2",
+  "text": "Hi I'm Priya I'd like to walk through the new first screen"
+ },
+ {
+  "start": 11.44,
+  "end": 14.48,
+  "speaker": "S3",
+  "text": "Hi Leo here I look after the backend"
+ },
+ {
+  "start": 15.36,
+  "end": 23.2,
+  "speaker": "S1",
+  "text": "Some background first Over the last quarter fortyone percent of support tickets were about buying or renewing ride passes"
+ },
+ {
+  "start": 24.32,
+  "end": 29.28,
+  "speaker": "S2",
+  "text": "That matches what we see in testing The pass button is hidden two levels deep in the menu"
+ },
+ {
+  "start": 30.0,
+  "end": 33.84,
+  "speaker": "S1",
+  "text": "So the question is whether ride passes should move to the first screen"
+ },
+ {
+  "start": 34.96,
+  "end": 39.2,
+  "speaker": "S2",
+  "text": "I'd say yes Show the active pass at the top with a renew button right there"
+ },
+ {
+  "start": 39.92,
+  "end": 48.3473125,
+  "speaker": "S3",
+  "text": "I agree One concern though Unlocking a bike currently takes two point three seconds Seconds at the median and people tap twice when it's slow"
+ },
+ {
+  "start": 49.1473125,
+  "end": 52.6673125,
+  "speaker": "S1",
+  "text": "Can you measure that properly before we commit to a design"
+ },
+ {
+  "start": 53.7073125,
+  "end": 61.3873125,
+  "speaker": "S3",
+  "text": "Sure I'll measure the unlock API latency and share it I can't promise a date yet I need to check the sprint first"
+ },
+ {
+  "start": 62.3473125,
+  "end": 65.1473125,
+  "speaker": "S1",
+  "text": "Fine we'll set the deadline once you've checked"
+ },
+ {
+  "start": 66.1873125,
+  "end": 68.5073125,
+  "speaker": "S2",
+  "text": "I'll have the mockups ready by next Thursday"
+ },
+ {
+  "start": 69.2273125,
+  "end": 76.1073125,
+  "speaker": "S1",
+  "text": "Great So we agree Passes move to the first screen and the referral program stays out of this release"
+ },
+ {
+  "start": 77.38731250000001,
+  "end": 77.94731250000001,
+  "speaker": "S3",
+  "text": "Agreed"
+ },
+ {
+  "start": 78.9073125,
+  "end": 83.5473125,
+  "speaker": "S2",
+  "text": "Agreed One thing we haven't settled is whether to keep the old map view for older phones"
+ },
+ {
+  "start": 84.2673125,
+  "end": 88.8273125,
+  "speaker": "S1",
+  "text": "Let's leave that open and revisit it next week Thanks everyone"
+ }
+]

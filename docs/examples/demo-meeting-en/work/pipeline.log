@@ -1,0 +1,3 @@
+2026-11-10 11:19:50,096 INFO start 20261112-140000-66bb2495 Recording 261112_140000.m4a
+2026-11-10 11:20:34,766 WARNING no Syncthing folder contains <root>/notes
+2026-11-10 11:20:34,767 INFO done 20261112-140000-66bb2495 in 45s [convert:done:0s diarize:done:2s detect_language:done:3s transcribe:done:5s second_pass:done:4s turns:done:0s correct:done:11s classify:done:11s summarize:done:10s note:done:0s]

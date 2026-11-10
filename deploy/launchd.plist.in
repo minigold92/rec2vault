@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Template rendered by deploy/setup.sh into ~/Library/LaunchAgents/@LABEL@.plist. Settings live in @ROOT@/settings.env. -->
+<!-- Rendered by quietclerk.install. One persistent service, never a tick timer. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>@LABEL@</string>
   <key>ProgramArguments</key>
   <array>
-    <string>@APP@/.venv/bin/python</string>
+    <string>@PYTHON@</string>
     <string>-m</string>
-    <string>rec.tick</string>
+    <string>quietclerk.cli</string>
+    <string>--settings</string><string>@SETTINGS@</string>
+    <string>--support</string><string>@SUPPORT@</string>
+    <string>serve</string>
   </array>
-  <key>WorkingDirectory</key><string>@APP@</string>
-  <key>StartInterval</key><integer>60</integer>
+  <key>WorkingDirectory</key><string>@SOURCE@</string>
+  <key>KeepAlive</key><true/>
   <key>RunAtLoad</key><true/>
   <key>ProcessType</key><string>Background</string>
   <key>EnvironmentVariables</key>

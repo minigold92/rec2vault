@@ -1,0 +1,9 @@
+2026-11-10 11:14:32,990 INFO start 20261110-100000-8d21adaf 음성 261110_100000.m4a
+2026-11-10 11:15:38,732 WARNING no Syncthing folder contains <root>/notes
+2026-11-10 11:15:38,733 INFO done 20261110-100000-8d21adaf in 66s [convert:done:0s diarize:done:2s detect_language:done:4s transcribe:done:9s second_pass:done:6s turns:done:0s correct:done:16s classify:done:13s summarize:done:15s note:done:0s]
+2026-11-10 11:23:16,111 INFO start 20261110-100000-8d21adaf 음성 261110_100000.m4a
+2026-11-10 11:23:42,561 WARNING no Syncthing folder contains <root>/notes
+2026-11-10 11:23:42,562 INFO done 20261110-100000-8d21adaf in 26s [convert:reused:0s diarize:reused:0s detect_language:reused:0s transcribe:reused:0s second_pass:reused:0s turns:reused:0s correct:reused:0s classify:done:13s summarize:done:13s note:done:0s]
+2026-11-10 11:26:35,738 INFO start 20261110-100000-8d21adaf 음성 261110_100000.m4a
+2026-11-10 11:26:35,867 WARNING no Syncthing folder contains <root>/notes
+2026-11-10 11:26:35,867 INFO done 20261110-100000-8d21adaf in 0s [convert:reused:0s diarize:reused:0s detect_language:reused:0s transcribe:reused:0s second_pass:reused:0s turns:reused:0s correct:reused:0s classify:reused:0s summarize:reused:0s note:done:0s]

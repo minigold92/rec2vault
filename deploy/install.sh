@@ -1,20 +1,13 @@
 #!/bin/sh
-# Install or update the pipeline.
-#   On this Mac:                 deploy/install.sh
-#   On another Mac over SSH:     HOST=my-mac-mini deploy/install.sh
-# First install only (stored in ~/rec/settings.env on the target):
-#   REC_OUTPUT="<folder inside your Obsidian vault>"  REC_SINCE="YYYY-MM-DD HH:MM"
+# Install from this durable checkout, or upgrade a root in place:
+#   deploy/install.sh install
+#   deploy/install.sh upgrade --root "$HOME/rec"
+# Remote deployment must first place a checkout on the target; never rsync
+# --delete over a live application's source or guess an operational SSH host.
 set -eu
-SRC=$(cd "$(dirname "$0")/.." && pwd)
-copy() {
-  rsync -a --delete --exclude .git --exclude .venv --exclude samples --exclude .pytest_cache \
-    --exclude __pycache__ "$SRC/" "$1"
-}
-if [ -z "${HOST:-}" ]; then
-  mkdir -p "$HOME/rec/app"
-  [ "$SRC" = "$HOME/rec/app" ] || copy "$HOME/rec/app/"
-  exec sh "$HOME/rec/app/deploy/setup.sh"
+APP=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -n "${HOST:-}" ]; then
+  echo 'Run deploy/install.sh in a durable checkout on the target Mac; automatic remote replacement is disabled.' >&2
+  exit 1
 fi
-ssh "$HOST" 'mkdir -p ~/rec/app'
-copy "$HOST:rec/app/"
-ssh "$HOST" "REC_OUTPUT='${REC_OUTPUT:-}' REC_SINCE='${REC_SINCE:-}' REC_LABEL='${REC_LABEL:-}' sh rec/app/deploy/setup.sh"
+exec sh "$APP/deploy/setup.sh" "$@"

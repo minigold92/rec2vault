@@ -1,0 +1,39 @@
+{
+ "meta": {
+  "title": "책마루 홈 화면 개편과 대출 연장 기능 논의",
+  "type": "meeting",
+  "type_confidence": "high",
+  "type_basis_id": "t1",
+  "division": "work",
+  "topics": [
+   "대출 연장 관련 문의 비중 38%",
+   "홈 화면 첫 칸에 내 대출 현황과 연장 버튼 배치",
+   "대출 연장 API 응답 시간 측정",
+   "다음 주 금요일까지 홈 화면 시안 제출",
+   "글자 크기가 다른 두 가지 시안 비교"
+  ],
+  "project": null,
+  "project_suggest": "책마루 앱 개편",
+  "speakers": {
+   "S1": {
+    "role": "회의 진행 및 개편 범위·결정 사항 정리",
+    "name": null,
+    "name_id": null,
+    "split_suspect": true
+   },
+   "S2": {
+    "role": "홈 화면 디자인 제안 및 시안 작성, 서버 담당자 자기소개도 혼재",
+    "name": "오지안",
+    "name_id": "t2",
+    "split_suspect": true
+   },
+   "S3": {
+    "role": "대출 연장 API 응답 지연 문제 제기 및 응답 시간 측정 담당",
+    "name": null,
+    "name_id": null,
+    "split_suspect": false
+   }
+  }
+ },
+ "engine": "codex"
+}
