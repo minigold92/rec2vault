@@ -489,6 +489,20 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
         settings = runtime.settings
         with closing(store.connect(runtime.db)) as con:
             try:
+                if path == '/api/meetings' and method == 'GET':
+                    from .. import agent_read
+                    return JSONResponse(agent_read.listing(con, settings.root,
+                        since=request.query_params.get('since'), limit=request.query_params.get('limit', 50)))
+                if path.startswith('/api/meetings/') and method == 'GET':
+                    from .. import agent_read, export
+                    include = request.query_params.get('transcript', '1')
+                    format = request.query_params.get('format', 'json')
+                    if include not in ('0', '1') or format not in ('json', 'md'):
+                        raise ValueError('invalid meeting format or transcript flag')
+                    job_id = request.path_params['job_id']
+                    if format == 'md':
+                        return export.download(con, job_id, settings.root, {'format': 'md'}, include_transcript=include == '1')
+                    return JSONResponse(agent_read.show(con, settings.root, job_id, include_transcript=include == '1'))
                 if path == '/api/search' and method == 'GET':
                     from .. import search
                     return JSONResponse(search.query(con, request.query_params.get('q'), request.query_params.get('limit', 20), request.query_params.get('offset', 0)))
@@ -704,6 +718,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
         ('/api/session', ['GET']), ('/api/logout', ['POST']), ('/api/status', ['GET']),
         ('/api/update', ['GET']), ('/api/update/{action}', ['POST']),
         ('/api/search', ['GET']),
+        ('/api/meetings', ['GET']), ('/api/meetings/{job_id}', ['GET']),
         ('/api/jobs', ['GET']), ('/api/jobs/{job_id}', ['GET']),
         ('/api/jobs/{job_id}/{action}/{item}', ['GET', 'PUT', 'POST', 'DELETE']),
         ('/api/jobs/{job_id}/{action}', ['GET', 'POST', 'PUT']),

@@ -14,6 +14,8 @@
     "POST /api/update/dismiss": {"200": "Update"},
     "GET /api/jobs": {"200": "Jobs"},
     "GET /api/search": {"200": "Search"},
+    "GET /api/meetings": {"200": "Meetings", "description": "Read-only CLI list. since=YYYY-MM-DD inclusive; limit=1..200 (default 50). Includes jobs without a published transcript; excludes locally deleted jobs."},
+    "GET /api/meetings/{job_id}": {"200": "Meeting", "description": "Read-only CLI show. transcript=0 omits the transcript; format=md returns the Markdown export instead. Running jobs expose only their last published run."},
     "GET /api/jobs/{job_id}/export": {"200": "binary srt|vtt|txt|md|docx; Content-Disposition: attachment; filename*=UTF-8 RFC5987"},
     "GET /api/jobs/{job_id}": {"200": "Detail"},
     "POST /api/jobs/{job_id}/process": {"request": "ProcessRequest", "202": null, "204": null, "409": "Conflict"},
@@ -44,6 +46,9 @@
   "x-common-errors": {"400": "Error", "401": "Error", "403": "Error", "404": "Error", "409": "Conflict", "413": "Error", "503": "Error"},
   "$defs": {
     "Search": {"type": "object", "required": ["items", "total"], "properties": {"total": {"type": "integer", "minimum": 0}, "items": {"type": "array", "items": {"type": "object", "required": ["job_id", "title", "date", "kind", "line_id", "start", "speaker", "snippet"], "properties": {"job_id": {"type": "string"}, "title": {"type": "string"}, "date": {"type": "string"}, "kind": {"enum": ["line", "title", "summary"]}, "line_id": {"type": ["string", "null"]}, "start": {"type": ["number", "null"]}, "speaker": {"type": ["string", "null"]}, "snippet": {"type": "array", "items": {"type": "object", "required": ["text", "hit"], "properties": {"text": {"type": "string"}, "hit": {"type": "boolean"}}}}}}}}},
+    "MeetingListItem": {"type": "object", "required": ["job_id", "date", "title", "type", "duration_sec", "status"], "properties": {"job_id": {"type": "string"}, "date": {"type": "string"}, "title": {"type": "string"}, "type": {"type": ["string", "null"]}, "duration_sec": {"type": ["number", "null"]}, "status": {"type": "string"}}},
+    "Meetings": {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {"$ref": "#/$defs/MeetingListItem"}}}},
+    "Meeting": {"type": "object", "required": ["job_id", "date", "title", "properties", "summary", "tasks"], "properties": {"job_id": {"type": "string"}, "date": {"type": "string"}, "title": {"type": "string"}, "properties": {"type": "object"}, "summary": {"type": "string"}, "tasks": {"type": "array", "items": {"type": "string"}}, "transcript": {"type": "array", "items": {"type": "object", "required": ["id", "start", "end", "speaker", "text"], "properties": {"id": {"type": "string", "pattern": "^t[1-9][0-9]*$"}, "start": {"type": "number"}, "end": {"type": "number"}, "speaker": {"type": ["string", "null"]}, "name": {"type": ["string", "null"]}, "text": {"type": "string"}}}}}},
     "OverrideConflict": {"type": "object", "required": ["error", "reason"], "properties": {"error": {"type": "string"}, "reason": {"type": "string"}}},
     "SpeakerNameRequest": {"type": "object", "required": ["name", "confirmed"], "additionalProperties": false, "properties": {"name": {"type": ["string", "null"], "minLength": 1, "maxLength": 40}, "confirmed": {"type": "boolean"}}, "description": "Strings are trimmed; all Unicode category C characters are rejected. A null name cannot be confirmed."},
     "SpeakerMergeRequest": {"type": "object", "required": ["from", "into"], "additionalProperties": false, "properties": {"from": {"type": "string", "pattern": "^S[1-9][0-9]*$"}, "into": {"type": ["string", "null"], "pattern": "^S[1-9][0-9]*$"}}},

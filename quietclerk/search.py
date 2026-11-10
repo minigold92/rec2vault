@@ -99,7 +99,7 @@ def meeting(con, job_id, root):
                    + r')(?![A-Za-z0-9_])' + PARTICLE)
         summary = re.sub(pattern, lambda m: replacements[m[1]] + particle_for(replacements[m[1]], m[2]), summary)
     return {'job_id': job_id, 'title': meta.get('title') or Path(row['source_name']).stem,
-            'date': row['recorded_at'], 'summary': summary, 'lines': lines}
+            'date': row['recorded_at'], 'summary': summary, 'lines': lines, 'properties': meta}
 
 
 def reindex(con, job_id, root):

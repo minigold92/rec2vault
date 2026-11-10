@@ -56,7 +56,7 @@ def _docx(text):
     return buffer.getvalue()
 
 
-def download(con, job_id, root, params):
+def download(con, job_id, root, params, *, include_transcript=True):
     from starlette.responses import Response
     format = params.get('format', 'txt').strip()
     if format not in FORMATS:
@@ -91,7 +91,9 @@ def download(con, job_id, root, params):
         summary = _readable(data['summary'], data['lines'])
         if format == 'txt':
             summary = re.sub(r'^#{1,3}\s+', '', summary, flags=re.M)
-        text = title + '\n\n' + summary + '\n\n' + heading + '\n' + '\n'.join(lines) + '\n'
+        text = title + '\n\n' + summary + '\n'
+        if include_transcript:
+            text += '\n' + heading + '\n' + '\n'.join(lines) + '\n'
     # XML and headers cannot carry controls, including controls in old artifacts.
     text = ''.join(c for c in text if c in '\n\t' or not unicodedata.category(c).startswith('C'))
     body = _docx(text) if format == 'docx' else text.encode('utf-8')

@@ -394,6 +394,32 @@ def service_plist(paths, venv, legacy_labels):
     return plistlib.dumps(data)
 
 
+def link_cli(paths, venv):
+    """Publish only our managed symlink; never replace an unrelated command."""
+    link = paths.home / '.local/bin/quietclerk'
+    target = venv / 'bin/quietclerk'
+    temporary = link.with_name('.quietclerk-' + uuid.uuid4().hex)
+    try:
+        if link.is_symlink():
+            old = link.resolve()
+            if (old.name != 'quietclerk' or old.parent.name != 'bin' or
+                    old.parent.parent.parent != paths.root / '.venvs' or
+                    not re.fullmatch(r'[0-9a-f]{32}', old.parent.parent.name)):
+                return f'CLI not linked: {link} belongs to another program; left unchanged.'
+        elif link.exists():
+            return f'CLI not linked: {link} already exists; left unchanged.'
+        if any(parent.is_symlink() for parent in (link.parent, link.parent.parent)):
+            return f'CLI not linked: {link.parent} is a symlink; left unchanged.'
+        link.parent.mkdir(parents=True, exist_ok=True)
+        temporary.symlink_to(target)
+        os.replace(temporary, link)
+        return f'CLI linked: {link} -> {target}. Add ~/.local/bin to PATH if needed.'
+    except OSError as exc:
+        return f'CLI not linked: {link}: {exc}. Service is still healthy.'
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class Snapshot:
     """Byte-for-byte rollback, including files absent before the transaction."""
     def __init__(self, paths):
@@ -526,7 +552,7 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
             if failures:
                 raise InstallError(f'old service restore failed: {failures}; original: {error}') from error
             raise
-    return '\n'.join(plan) + '\nService is healthy. Notes require separate consent to migrate.'
+    return '\n'.join(plan) + '\nService is healthy. Notes require separate consent to migrate.\n' + link_cli(paths, venv)
 
 
 def _require_v2(paths):
@@ -689,13 +715,14 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
                     raise InstallError(f'update rollback failed: {exc}; original: {error}') from error
             shutil.rmtree(venv, ignore_errors=True)
             raise
+        link_report = link_cli(paths, venv)
         # Only UUID-named, non-symlink directories are ours to prune. Keep the
         # immediately previous interpreter even when it lives outside .venvs.
         for candidate in venv.parent.iterdir():
             if (candidate not in (venv, previous) and not candidate.is_symlink() and
                     candidate.is_dir() and re.fullmatch(r'[0-9a-f]{32}', candidate.name)):
                 shutil.rmtree(candidate, ignore_errors=True)
-    return '\n'.join(plan) + '\nService is healthy.'
+    return '\n'.join(plan) + '\nService is healthy.\n' + link_report
 
 
 def doctor(*, root=None, adapter=None, home=None, agents=None, legacy_labels=()):
