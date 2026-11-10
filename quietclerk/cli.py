@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
+import urllib.parse
 import webbrowser
 from pathlib import Path
 
@@ -21,6 +22,10 @@ def main(argv=None):
     serve.add_argument('--legacy-label', action='append', default=[])
     sub.add_parser('open')
     sub.add_parser('status')
+    search = sub.add_parser('search')
+    search.add_argument('query')
+    search.add_argument('--limit', type=int, default=20)
+    search.add_argument('--offset', type=int, default=0)
     update = sub.add_parser('update')
     update.add_argument('--root', type=Path)
     update.add_argument('--source', type=Path, help='source checkout or retained QuietClerk wheel')
@@ -69,8 +74,16 @@ def main(argv=None):
             csrf = response.headers['X-CSRF-Token']
         headers = {'Cookie': cookie}
         try:
-            with urllib.request.urlopen(urllib.request.Request(base + '/api/status', headers=headers), timeout=30) as response:
-                print(json.dumps(json.load(response), ensure_ascii=False))
+            endpoint = '/api/search?' + urllib.parse.urlencode({'q': args.query, 'limit': args.limit, 'offset': args.offset}) if args.command == 'search' else '/api/status'
+            with urllib.request.urlopen(urllib.request.Request(base + endpoint, headers=headers), timeout=30) as response:
+                result = json.load(response)
+                if args.command == 'search':
+                    for item in result['items']:
+                        text = ''.join(part['text'] for part in item['snippet'])
+                        print(f"{item['date']} | {item['title']} | {item['job_id']} {item['line_id'] or item['kind']} | {text}")
+                    print(f"{result['total']} result(s)")
+                else:
+                    print(json.dumps(result, ensure_ascii=False))
         finally:
             request = urllib.request.Request(base + '/api/logout', data=b'{}',
                 headers=headers | {'Origin': base, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json'})

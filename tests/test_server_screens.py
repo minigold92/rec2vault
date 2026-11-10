@@ -21,10 +21,24 @@
 | PUT /api/settings refusing the word list (the real server's answers: control character, 41 characters, 201 entries, conflicting pair, wrong shape) | the field shows the reason in the display language (an answer with no sentence of ours: as the server wrote it) and the status code; the draft stays; editing the list clears the stale line | test_word_list_server_errors_are_shown_in_words |
 | `vocabulary` in `providers.consent` (box in settings, checkbox in setup step 4) | off when an engine is turned on, in the request only after the tick, never for an engine without the transcript (box off, with the reason); the sentence says what yes and no do | test_word_list_consent_box_in_settings, test_setup_step_4_has_the_word_list_checkbox, test_every_consent_field_the_server_accepts_is_named_on_every_screen |
 | Review codes and sent fields on the minutes screen (`asr_dropped`, `speaker_review`, `unsupported_owner` / `_deadline` / `_number`, `weak_citation`; an unknown code, tags as a code, 37 reasons; `vocabulary` and an unknown name in `sent_fields`) | every code the engine writes has a Korean and an English sentence that means what render.py writes into the note; an unknown code is shown as text; six chips at most, the engine's own flags first and the rest counted; field names by name, never "undefined" | test_review_reasons_have_sentences_in_both_languages, test_many_review_reasons_keep_the_engines_flags_in_view, test_sent_fields_name_the_word_list |
+| Search text typed or restored from the address (`?q=`): empty, one character, spaces around or inside, `대 출` (two characters), 100 / 101 characters, control and zero-width characters, markup | the rule of `search.query` (2..100 characters without spaces counted, no Unicode "other" characters): nothing outside it is ever sent, and the box says why; a valid text is asked for after a 300 ms pause (at once on Enter), once, and only the newest answer is shown | test_search_waits_for_a_pause_and_needs_two_characters, test_search_box_sends_exactly_what_the_engine_accepts, test_search_text_comes_back_from_the_address |
+| GET /api/search answers with markup, `javascript:` or quote-carrying job and line ids, bidi / NUL characters, a 5000-character title, missing fields, a wrong `total`, non-objects among the items | text nodes only (hits in `<mark>`), controls removed, lengths bounded; links are only `/notes/<id>` with `#t<n>` or `#sum` (a bad line id adds no anchor); items without a job id are dropped; a wrong total ends the list | test_search_result_text_is_inert, test_search_answers_the_screens_read_match_the_schema |
+| A search that fails (400 with the engine's sentence, the engine down), a slow answer overtaken by a newer text, a second page that fails | the sentence and its status code with a Try again button; the old results stay when only "more" fails; an older answer never replaces a newer one | test_search_results_are_grouped_by_meeting_and_link_to_the_line, test_search_waits_for_a_pause_and_needs_two_characters |
+| `/`, ⌘K and Ctrl+K on a screen: in a text box, with a modifier or `?`, while composing, on a checkbox, with another dialog open | the box opens (Notes: the inline box; elsewhere a dialog that Esc closes and hands the focus back from); a slash typed in a field, composing text, a modifier, and a second dialog are left alone | test_slash_and_cmd_k_open_the_search_on_every_screen, test_on_the_notes_screen_the_keys_go_to_the_box_not_a_dialog |
+| Summary headings typed or read from settings: empty, 41 characters, control / zero-width / bidi characters, markup, a 5000-character heading, the 13th, removing the last one, a type with no key | the rule of `config._validate` (1-40 characters, 1-12 per type, no "other" characters); an empty row says so once it was left, the others at once; a list that cannot be sent blocks Save (types with problems open, rows in red) and is never sent; a type with no key shows the engine's default headings, which are compared with `postprocess.TYPE_SECTIONS` | test_summary_layout_memo_and_daily_note_are_edited_and_saved, test_summary_layout_defaults_and_rules_match_the_engine, test_summary_layout_text_is_inert, test_summary_layout_without_the_keys_is_defaults_and_saves_only_the_change |
+| Summary preference: 501 characters, a line break typed or pasted, control characters, markup | counted in characters (not UTF-16 units); a line break becomes a space and says so; over 500 or invisible characters block Save with the count; the text is a value, never markup | test_summary_layout_memo_and_daily_note_are_edited_and_saved, test_summary_layout_text_is_inert |
+| Short-memo minimum: 3, 400, letters, minimum not below the minimum length | 5-299 seconds, a whole number; a wrong value blocks Save with the field's sentence; a minimum at or above the minimum length is said in words (no recording would become a memo); the field is off, with its reason, while memos are off | test_summary_layout_memo_and_daily_note_are_edited_and_saved |
+| Daily-note path: `../x.md`, `a{x}.md`, `a\b.md`, not `.md`, invisible characters, 4097 characters, empty; a notes folder with no Obsidian vault or under a symbolic link (only the engine can tell) | the syntax rule of `daily.template_path` (compared with the engine on a corpus); empty means off; the engine's refusal is shown in words with the status code; editing the path takes the old line away | test_summary_layout_defaults_and_rules_match_the_engine, test_summary_layout_server_refusals_are_shown_in_words, test_summary_layout_memo_and_daily_note_are_edited_and_saved |
 
 The update UI tests run the real front-end modules in node against a fake DOM, fake fetch and fake EventSource. Their API answers are
 fixtures shaped like selfupdate.Updates.snapshot() (7-character hashes, ISO dates with offsets, Korean error sentences) and are
 validated against schema.json when it defines Update: verification level is "assumed answers", not a running engine.
+
+The search and summary layout tests (tests/ui_find_scenarios.js, spliced into the same harness) run the same way. The search answers, the 400 bodies, and the
+rules (compared with search.query and config._validate) are the real engine's; the bodies the settings screen sends are accepted by the real PUT /api/settings
+and land in settings.toml. Verification level: assumed answers in a fake DOM plus real engine answers on synthetic meetings. A real run (headless Chromium
+against `quietclerk serve` on a temporary root holding the two demo meetings, docs/examples) covered search ("대출", "ride pass", a third synthetic meeting for
+"more"), the dialog and shortcuts, and saving every new setting into settings.toml; no real recording and no samples/ file was used.
 
 The word list tests (settings, setup step 4, minutes) run the real front-end modules in node the same way. Where it is cheap the answers they
 read are real: the 400 bodies come from PUT /api/settings on the real app, the minutes page data and GET /api/jobs/{id} from the real app, the
@@ -1146,6 +1160,383 @@ def test_sent_fields_name_the_word_list(harness, note_job, lang):
     assert sent(0, 3) in correct and sent(0, 1, 2, 3) in classify
     assert t['sent'].format(f"{t['sent_names'][0]}, constructor") in summarize   # a name we do not know is shown as text, not as undefined
     assert 'codex' in correct and 'claude' in summarize and 'undefined' not in ''.join(rows.values())
+
+
+# ---- meeting search and summary layout (contract 10.8 C, E, F, G). The scenarios are in tests/ui_find_scenarios.js and are spliced into the
+# harness below when a test runs; the answers the screens read are the real server's wherever that is cheap (search results, 400 bodies).
+FIND_SCENARIOS = Path(__file__).with_name('ui_find_scenarios.js')
+
+
+@pytest.fixture(scope='module')
+def find_harness(tmp_path_factory):
+    marker = 'const out = await scenarios[scenario](params);'
+    assert UPDATE_UI_HARNESS.count(marker) == 1
+    path = tmp_path_factory.mktemp('find-ui') / 'harness.mjs'
+    path.write_text(UPDATE_UI_HARNESS.replace(marker, FIND_SCENARIOS.read_text(encoding='utf-8') + '\n' + marker), encoding='utf-8')
+    return path
+
+
+def search_meeting(runtime, job_id, title, rows, summary):
+    """A published meeting with these (speaker, text) lines and verified run artifacts, indexed for search."""
+    from quietclerk import search
+    root = runtime.settings.root
+    run_id = 'run-' + job_id[-4:]
+    with closing(store.connect(runtime.db)) as con:
+        store.add_job(con, job_id, 'sha-' + job_id, 'meeting.m4a', str(root / 'archive' / job_id / 'source.m4a'), 120)
+        con.execute('INSERT INTO runs(run_id,job_id,mode,settings_json,consent_json,status,started_at,finished_at) '
+                    "VALUES(?,?,'auto',?,?,'done',1,2)", (run_id, job_id, json.dumps({}), json.dumps({})))
+        con.execute("UPDATE jobs SET status='done',current_run_id=?,note_path=?,review_reasons=? WHERE job_id=?",
+                    (run_id, str(root / 'notes' / (job_id + '.md')), '[]', job_id))
+    directory = root / 'work' / job_id / 'runs' / run_id
+    directory.mkdir(parents=True)
+    payloads = {
+        'turns.json': [{'start': 1.0 + 3 * i, 'end': 3.0 + 3 * i, 'speaker': speaker, 'text': text} for i, (speaker, text) in enumerate(rows)],
+        'corrected.json': {'texts': [text for _, text in rows], 'notes': []},
+        'classification.json': {'meta': {'title': title, 'type': 'meeting', 'division': 'work', 'speakers': {}}},
+        'summary.json': {'text': summary},
+    }
+    for name, payload in payloads.items():
+        part = directory / (name + '.part')
+        artifacts.write_json(part, payload)
+        artifacts.commit(directory / name, part, stage=name, run_id=run_id, inputs={}, params={})
+    with closing(store.connect(runtime.db)) as con:
+        search.reindex(con, job_id, root)
+    return job_id
+
+
+KO_TITLE = '책마루 홈 화면 개편과 대출 연장 기능 논의'
+EN_TITLE = 'Arbor Bikes App First-Screen Review'
+
+
+@pytest.fixture
+def find_data(api):
+    """A Korean and an English meeting, and what the real GET /api/search answers for the searches the screens make."""
+    from urllib.parse import quote
+    client, runtime, base = api
+    login(client, runtime, base)
+    ko = search_meeting(runtime, '20261110-100000-aaaa1111', KO_TITLE,
+                        [('S1' if i % 2 else 'S2', f'대출 연장 버튼 {i}번 안건을 봅니다 API 응답 시간 확인') for i in range(24)],
+                        '## 핵심 요약\n- 대출 연장 버튼을 홈으로 올린다. [t3]\n- API 응답 시간을 잰다. [t5]\n')
+    en = search_meeting(runtime, '20261112-140000-bbbb2222', EN_TITLE,
+                        [('S1', 'Buying a ride pass takes two taps'), ('S2', 'The ride pass button is hidden two levels deep'), ('S1', 'Leo will measure the unlock API latency')],
+                        '## Key summary\n- Ride passes move to the first screen. [t2]\n')
+    given = {}
+    for text, offset in [('API', 0), ('API', 20), ('ride pass', 0), ('zzzz', 0), ('대 출', 0), ('연장', 0)]:
+        response = client.get('/api/search', params={'q': text, 'limit': 20, 'offset': offset})
+        assert response.status_code == 200, text
+        given[f"/api/search?q={quote(text, safe='')}&limit=20&offset={offset}"] = {'body': response.json()}
+    jobs = [{'job_id': job_id, 'source_name': name, 'recorded_at': job_id[:15], 'duration_sec': 157, 'status': 'done', 'note_path': '/v/' + job_id + '.md', 'review_reasons': '[]'}
+            for job_id, name in ((ko, '음성 261110_100000.m4a'), (en, 'Recording 261112_140000.m4a'))]
+    return {'ko': ko, 'en': en, 'given': given, 'jobs': jobs}
+
+
+FIND = {
+    'ko': {'idle': '제목·대화·요약 안에서 찾아요. 두 글자 이상 입력해 주세요.', 'short': '한 글자만으로는 찾지 않아요. 한 글자 더 입력해 주세요.',
+           'bad': '제어문자나 보이지 않는 글자는 찾을 수 없어요.', 'long': '검색어는 100자까지예요.', 'searching': '찾는 중…',
+           'part': '일치하는 곳 {total}개 중 {shown}개를 보여 줘요.', 'all': '일치하는 곳 {total}개', 'none': '‘{q}’ 검색 결과가 없어요.', 'nothing': '못 찾았어요.',
+           'more': '더 보기 ({left}개 남음)', 'loading': '불러오는 중…', 'moreFailed': '더 가져오지 못했어요. 다시 눌러 주세요.', 'retry': '다시 시도',
+           'refused': '요청을 받지 않았어요.', 'down': '엔진에 닿지 못했어요.', 'summary': '요약', 'title': '제목', 'trigger': '회의록 검색', 'foot': 'Esc로 닫아요'},
+    'en': {'idle': 'Searches titles, transcripts and summaries. Type at least two characters.', 'short': 'One character is too short to search. Add one more.',
+           'bad': 'Control and invisible characters can\'t be searched.', 'long': 'The search text can be up to 100 characters.', 'searching': 'Searching…',
+           'part': '{total} matches, showing {shown}.', 'all': '{total} matches', 'none': 'No matches for “{q}”.', 'nothing': 'Nothing found.',
+           'more': 'Show more ({left} left)', 'loading': 'Loading…', 'moreFailed': 'Couldn\'t load more. Press it again.', 'retry': 'Try again',
+           'refused': 'Request not accepted.', 'down': 'Could not reach the engine.', 'summary': 'Summary', 'title': 'Title', 'trigger': 'Search notes', 'foot': 'Esc to close'},
+}
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_search_waits_for_a_pause_and_needs_two_characters(find_harness, find_data, lang):
+    t = FIND[lang]
+    seen = run_ui(find_harness, 'findRules', lang=lang, jobs=find_data['jobs'], given=find_data['given'])
+    assert seen['initial']['status'] == t['idle'] and seen['initial']['requests'] == [] and not seen['initial']['listHidden'] and seen['initial']['rows'] == 2
+    assert seen['label'] == t['trigger'] and seen['placeholder']
+    for name, said in [('oneChar', 'short'), ('spaces', 'short'), ('control', 'bad'), ('invisible', 'bad'), ('tooLong', 'long')]:
+        view = seen[name]
+        assert view['status'] == t[said] and view['requests'] == [] and not view['listHidden'], name   # nothing is asked; the list stays
+        assert (view['invalid'] == 'true') == (said in ('bad', 'long')) and ('err-text' in view['tone']) == (said in ('bad', 'long')), name
+    # three keystrokes inside the pause: no request yet, "searching" is said once, and one request goes out after the pause
+    assert seen['typing'] == {'status': t['searching'], 'requests': 0, 'listHidden': True, 'live': 'polite', 'role': 'status'}
+    assert seen['settled']['requests'] == ['/api/search?q=API&limit=20&offset=0'] and seen['settled']['url'] == '/notes?q=API'
+    assert seen['settled']['status'] == t['part'].format(total=26, shown=20) and seen['settled']['busy'] == 'false' and not seen['settled']['dim']
+    assert seen['clear']['status'] == t['idle'] and not seen['clear']['listHidden'] and seen['clear']['requests'] == [] and seen['clear']['url'] == '/notes' and not seen['clear']['groups']
+    assert seen['spacedPair']['requests'] == ['/api/search?q=%EB%8C%80%20%EC%B6%9C&limit=20&offset=0'] and seen['spacedPair']['groups']   # '대 출' is two characters
+    assert seen['enter']['requests'] == ['/api/search?q=%EC%97%B0%EC%9E%A5&limit=20&offset=0']   # Enter does not wait for the pause
+    assert seen['overtaken']['titles'] == ['NEW']   # the slow answer for older text is dropped
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_search_results_are_grouped_by_meeting_and_link_to_the_line(find_harness, find_data, lang):
+    t, ko, en = FIND[lang], find_data['ko'], find_data['en']
+    seen = run_ui(find_harness, 'findResults', lang=lang, jobs=find_data['jobs'], given=find_data['given'])
+    first = seen['first']
+    assert first['status'] == t['part'].format(total=26, shown=20) and first['listHidden'] and first['requests'] == ['/api/search?q=API&limit=20&offset=0']
+    newest, older = first['groups']   # newest meeting first, one group per meeting
+    assert (newest['title'], newest['href']) == (EN_TITLE, f'/notes/{en}') and (older['title'], older['href']) == (KO_TITLE, f'/notes/{ko}')
+    assert '2026' in newest['when'] and '14:00' in newest['when'] and '10:00' in older['when']
+    assert [h['href'] for h in newest['hits']] == [f'/notes/{en}#t3'] and newest['hits'][0]['where'] == '00:07 S1'
+    summary, *lines = older['hits']
+    assert summary['href'] == f'/notes/{ko}#sum' and summary['where'].endswith(t['summary']) and '[t5]' not in summary['snip'] and '\n' not in summary['snip']
+    assert [h['href'] for h in lines[:3]] == [f'/notes/{ko}#t1', f'/notes/{ko}#t2', f'/notes/{ko}#t3'] and lines[0]['where'] == '00:01 S2' and lines[1]['where'] == '00:04 S1'
+    assert all(h['marks'] == ['API'] for g in first['groups'] for h in g['hits']) and len(lines) == 18
+    assert first['more'] == {'text': t['more'].format(left=6), 'act': 'more', 'disabled': False}
+    assert seen['loading'] == {'more': {'text': t['loading'], 'act': 'more', 'disabled': True}, 'status': t['part'].format(total=26, shown=20)}
+    second = seen['second']
+    assert second['requests'] == ['/api/search?q=API&limit=20&offset=20'] and [g['title'] for g in second['groups']] == [EN_TITLE, KO_TITLE]   # the second page joins the same meeting
+    assert len(second['groups'][1]['hits']) == 25 and second['more'] is None and second['status'] == t['all'].format(total=26)
+    assert second['focus'] == second['groups'][1]['hits'][19]['href']   # the first new result has the keyboard
+    assert [h['marks'] for h in seen['ride']['groups'][0]['hits']] == [['Ride pass'], ['ride pass'], ['ride pass']] and seen['ride']['groups'][0]['hits'][0]['where'].endswith(t['summary'])
+    none = seen['none']
+    assert none['status'] == t['none'].format(q='zzzz') and t['nothing'] in none['none'] and none['listHidden'] and not none['groups']
+    assert t['refused'] in seen['refused']['alert'] and '400' in seen['refused']['alert'] and 'q must contain' in seen['refused']['alert'] and seen['refused']['retry']['text'] == t['retry']
+    assert t['down'] in seen['down']['alert'] and 'engine_unreachable' in seen['down']['alert']
+    assert len(seen['retried']['groups']) == 2 and seen['retried']['requests'] == ['/api/search?q=down&limit=20&offset=0']
+    assert seen['moreFailed'] == {'more': {'text': t['more'].format(left=6), 'act': 'more', 'disabled': False}, 'said': t['moreFailed'], 'groups': 2}
+
+
+@needs_node
+def test_search_text_comes_back_from_the_address(find_harness, find_data):
+    seen = run_ui(find_harness, 'findRestore', lang='ko', jobs=find_data['jobs'], given=find_data['given'], search='?q=API')
+    assert seen['value'] == 'API' and seen['requests'] == ['/api/search?q=API&limit=20&offset=0'] and len(seen['view']['groups']) == 2
+    assert seen['listHidden'] and seen['urls'] == ['/notes?q=API']
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_search_result_text_is_inert(find_harness, find_data, lang):
+    seen = run_ui(find_harness, 'findHostile', lang=lang, jobs=find_data['jobs'])
+    assert not (MARKUP - {'a'}) & set(seen['tags']) and seen['pwned'] is None   # nothing the engine sent became an element or ran (links are checked below)
+    assert seen['requests'] == ['/api/search?q=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&limit=20&offset=0']   # the typed text is only ever encoded
+    ok = re.compile(r'^/notes/[A-Za-z0-9%._-]+(#(t[1-9][0-9]*|sum))?$')
+    assert seen['links'] and all(ok.fullmatch(href) for href in seen['links']), seen['links']   # same-origin /notes/... only, a bad line id adds no anchor
+    assert not any('javascript' in href or '"' in href or '<' in href for href in seen['links'])
+    assert seen['groups'] == 4 and seen['hits'] == 6 and seen['longest'] <= 200 and not seen['controls'] and len(seen['speaker']) <= 40   # junk items are dropped, text is bounded
+    assert '<i>hit</i>' in seen['marks'] and '\u202e' not in json.dumps(seen['view'], ensure_ascii=False)
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_slash_and_cmd_k_open_the_search_on_every_screen(find_harness, find_data, lang):
+    t = FIND[lang]
+    seen = run_ui(find_harness, 'findKeys', lang=lang, jobs=find_data['jobs'], given=find_data['given'])
+    assert seen['trigger']['side'].startswith(t['trigger']) and seen['trigger']['keys'] == 'Meta+K Control+K /' and seen['trigger']['mobile'] == t['trigger']
+    assert seen['slash'] == {'prevented': True, 'open': True, 'label': t['trigger'], 'focusId': 'fq', 'status': t['idle'], 'foot': seen['slash']['foot']} and t['foot'] in seen['slash']['foot']
+    assert seen['found']['groups'] == 2 and seen['found']['requests'] == 1 and seen['found']['hrefs'][0].endswith('#t3')
+    assert seen['whileOpen'] == {'slashPrevented': False, 'dialogs': 1, 'cmdK': True}   # a slash typed into the box is a character; ⌘K keeps the one dialog
+    assert seen['arrows'] == {'prevented': True, 'focus': 'find-title', 'next': 'find-hit', 'back': 'fq'}   # arrows walk the results and back to the box
+    assert seen['closed'] == {'dialogs': 0, 'focusBack': True}   # Esc: the dialog goes and the button that opened it has the focus again
+    assert seen['noMod'] == [False, False, False, False]   # ctrl+/, shift+/ (?), composing, a bare k do nothing
+    assert seen['typing'] == {'slashInInput': False, 'dialogs': 0} and seen['checkbox'] == {'prevented': True, 'dialogs': 1}   # not while typing; a checkbox is not typing
+    assert seen['ctrlK'] == {'prevented': True, 'dialogs': 1}   # Ctrl+K works even in a text box
+    assert seen['onTopOfAnother'] == {'slash': False, 'dialogs': 1}   # never on top of another dialog
+
+
+@needs_node
+def test_on_the_notes_screen_the_keys_go_to_the_box_not_a_dialog(find_harness, find_data):
+    seen = run_ui(find_harness, 'findKeysNotes', lang='ko', jobs=find_data['jobs'])
+    assert seen['afterSlash'] == {'prevented': True, 'dialogs': 0, 'focusId': 'q'} and seen['clicked'] == {'dialogs': 0, 'focusId': 'q'} and seen['box']
+
+
+@needs_node
+def test_search_box_sends_exactly_what_the_engine_accepts(find_harness, find_data, api):
+    from quietclerk import search
+    client, runtime, base = api
+    corpus = ['', ' ', 'a', 'ab', 'a b', 'a  ', '  ab  ', '대', '대출', '대 출', '😀😀', '😀', 'x' * 100, 'x' * 101, 'a\x00b', 'a\u200bb', 'a\tb', '\t\t', '한' * 100, '한' * 101]
+    sent = dict(run_ui(find_harness, 'findCorpus', lang='ko', jobs=find_data['jobs'], corpus=corpus))
+    with closing(store.connect(runtime.db)) as con:
+        for text in corpus:
+            try:
+                search.query(con, text, 20, 0)
+                accepted = True
+            except ValueError:
+                accepted = False
+            assert sent[text] == accepted, repr(text)   # a text the engine refuses is never sent, and one it takes is
+
+
+@pytest.mark.parametrize('offset', [0, 20])
+def test_search_answers_the_screens_read_match_the_schema(find_data, offset):
+    for path, answer in find_data['given'].items():
+        Draft202012Validator(SCHEMA | {'$ref': '#/$defs/Search'}).validate(answer['body'])
+    assert find_data['given'][f'/api/search?q=API&limit=20&offset={offset}']['body']['total'] == 26
+
+
+def test_search_ui_uses_only_the_search_endpoint():
+    source = (STATIC / 'lib/search.js').read_text()
+    assert re.findall(r"""['"`](/api/[^'"`?]*)""", source) == ['/api/search']
+    assert 'POST' not in source and 'put(' not in source and 'post(' not in source   # reading only
+
+
+# summary layout, memo and daily note (settings)
+SUM = {
+    'ko': {'nav': '요약 구성', 'types': ['회의', '현황공유', '발표회', '강의', '1:1', '브레인스토밍', '기타'], 'default': '기본', 'custom': '직접 정함', 'fixed': '핵심 요약', 'fixed2': '바꿀 수 없어요',
+           'chars': '제어문자나 보이지 않는 글자는 쓸 수 없어요. 줄바꿈도 안 돼요.', 'empty': '비어 있어요.', 'long': '{n}자예요. {max}자까지 쓸 수 있어요.', 'many': '12개를 모두 채웠어요',
+           'fix': '고쳐야 할 제목이 있어요. 빨간 줄을 고치거나 지워 주세요.', 'tag': '다음 요약부터 적용', 'lines': '줄바꿈은 공백으로 바꿨어요.', 'off': '지금은 꺼져 있어요.',
+           'window': '{min}초 이상 {max}초 미만 녹음을 메모로 남겨요.', 'above': '메모 최소 길이(300초)가 위의 최소 길이(300초)와 같거나 커서', 'range': '5~299초 사이로 적어 주세요.', 'number': '숫자로 적어 주세요.',
+           'dots': '‘..’ 없이 볼트 안의 경로를 적어 주세요.', 'braces': '{date}만 쓸 수 있어요.', 'ext': '.md로 끝나는 파일 경로를 적어 주세요.', 'example': '오늘 녹음이라면 Daily/{today}.md 에 링크를 더해요.',
+           'sections': '제목은 1~40자, 제어문자 없이 적어 주세요.', 'instructions': '500자까지, 제어문자(줄바꿈 포함) 없이 적어 주세요.', 'memo': '5~299초 사이로 적어 주세요.',
+           'daily': '회의록 폴더가 Obsidian 볼트 안에 있어야 해요.', 'banner': '저장하지 못했어요.', 'saved': '저장했어요.', 'reset': '기본값으로 초기화'},
+    'en': {'nav': 'Summary layout', 'types': ['Meeting', 'Status update', 'Presentation', 'Lecture', 'One-on-one', 'Brainstorm', 'Other'], 'default': 'Default', 'custom': 'Custom', 'fixed': 'Key summary',
+           'fixed2': 'can\'t be changed', 'chars': 'Control and invisible characters aren\'t allowed, and neither are line breaks.', 'empty': 'It\'s empty.', 'long': 'That is {n} characters; the limit is {max}.',
+           'many': 'The list is full (12)', 'fix': 'Some headings need fixing. Correct or remove the ones in red.', 'tag': 'Applies from the next summary', 'lines': 'Line breaks were turned into spaces.',
+           'off': 'It\'s off now.', 'window': 'Recordings from {min} s up to {max} s become memos.', 'above': 'The shortest memo (300 s) is not below the minimum length above (300 s)', 'range': 'Enter 5–299 seconds.',
+           'number': 'Enter a whole number.', 'dots': 'Write a path inside the vault, without ‘..’.', 'braces': 'Only {date} may be in braces', 'ext': 'Write a path to a Markdown file ending in .md',
+           'example': 'A recording made today adds its link to Daily/{today}.md.', 'sections': 'Headings are 1–40 characters with no control characters.',
+           'instructions': 'Up to 500 characters, with no control characters or line breaks.', 'memo': 'Enter 5–299 seconds.', 'daily': 'The notes folder has to be inside an Obsidian vault',
+           'banner': 'Not saved.', 'saved': 'Saved.', 'reset': 'Reset to default'},
+}
+
+
+@needs_node
+def test_summary_layout_defaults_and_rules_match_the_engine(find_harness):
+    from quietclerk import postprocess
+    corpus = {'headings': ['책마루', 'x' * 40, 'x' * 41, '한' * 41, '😀' * 40, '😀' * 41, 'a\u200bb', 'a\x00b', 'a\nb', '  padded  ', '', '   ', '\ufeff책마루', '<img src=x onerror=alert(1)>', '1:1', '__proto__'],
+              'instructions': ['', '  ', 'a' * 500, 'a' * 501, '가' * 500, '가' * 501, '😀' * 501, 'a\nb', 'a\tb', 'a\u200bb', '  결정 사항을 먼저  ', '<svg onload=alert(1)>'],
+              'daily': ['', '  ', 'Daily/{date}.md', '{date}.md', '~/Notes/Daily/{date}.md', '/abs/{date}.md', '../x.md', 'a/../b.md', 'a/..b.md', 'x.txt', 'x.MD', 'a{b}.md', '{date}{date}.md', '{ date }.md',
+                        'a\\b.md', '.md', 'Daily/.md', 'a/', 'x\u200b.md', 'x' * 4097 + '.md', 'Daily/{date}']}
+    seen = run_ui(find_harness, 'summaryRules', corpus=corpus)
+    assert [row[0] for row in seen['types']] == list(postprocess.MEETING_TYPES)
+    for key, ko, en in seen['types']:   # the labels and the default headings are the engine's own
+        assert (ko, en) == (postprocess.TYPE_LABELS['ko'][key], postprocess.TYPE_LABELS['en'][key]), key
+        assert ', '.join(seen['defaults']['ko'][key]) == postprocess.TYPE_SECTIONS['ko'][key], key
+        assert ', '.join(seen['defaults']['en'][key]) == postprocess.TYPE_SECTIONS['en'][key], key
+    assert seen['limits'] == [12, 40, 500, 5, 299]
+
+    def engine(key, value):
+        try:
+            config._validate(key, value)
+            return True
+        except config.SettingsError:
+            return False
+    for original, sent, issue in seen['headings']:
+        assert engine('summary.sections', {'meeting': [sent]}) == (issue is None), repr(original)
+    for original, sent, issue in seen['instructions']:
+        assert engine('summary.instructions', sent) == (issue is None), repr(original)
+    for original, sent, issue in seen['daily']:
+        assert engine('daily_note.path', sent) == (issue is None), repr(original)   # what the screen lets through, the engine takes: and the other way round
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_summary_layout_memo_and_daily_note_are_edited_and_saved(find_harness, api, tmp_path, lang):
+    t = SUM[lang]
+    seen = run_ui(find_harness, 'summarySave', lang=lang, settings=word_settings(lang))
+    nav = seen['nav']
+    assert nav[3:5] == [WORDS[lang]['nav'], t['nav']] and seen['section'] == t['nav']   # after the word list, before the engines
+    assert t['tag'] in seen['fields'][0]['tags'] and all(v['chip'] == t['default'] and not v['rows'] for v in seen['initial'])
+    assert [v['name'] for v in seen['initial']] == t['types'] and seen['bar'] == WORDS[lang]['none']
+    defaults = {'ko': '안건별 논의 · 결정 사항 · 할 일 · 미해결', 'en': 'Agenda · Decisions · Tasks · Open issues'}[lang]
+    assert seen['initial'][0]['peek'] == defaults and defaults in seen['defaultView']['defaults'] and seen['defaultView']['open'] and seen['defaultView']['buttons'] == ['own']
+    listed = defaults.split(' · ')
+    own = seen['own']
+    assert own['view']['rows'] == listed and own['view']['chip'].endswith(t['custom']) and t['fixed'] in own['fixed'] and t['fixed2'] in own['fixed'] and own['view']['count'] == '4 / 12'
+    assert 'heading 1' in own['focus'] or '제목 1' in own['focus']   # the first row has the keyboard
+    edited = seen['edited']['view']   # row 2 retyped, a new one typed and moved up, the first removed: the rows are as typed (trimmed when sent)
+    assert edited['rows'] == ['  결정과 근거  ', listed[2], '다음 주 일정', listed[3]] and edited['count'] == '4 / 12'
+    assert edited['peek'] == ' · '.join(row.strip() for row in edited['rows']) and 'remove' in edited['buttons']
+    full = seen['full']
+    assert full['count'] == '12 / 12' and 'add:off' in full['buttons']   # the 13th heading is not offered
+    assert seen['lastRow']['rows'] and len(seen['lastRow']['rows']) == 1 and 'remove:off' in seen['lastRow']['buttons']   # the last heading cannot be removed
+    assert seen['reset']['view']['chip'] == t['default'] and not seen['reset']['view']['rows'] and seen['reset']['view']['peek'] == defaults and seen['reset']['puts'] == 0
+    assert seen['peek']['expanded'] == 'true' and seen['peek']['view']['defaults'] and seen['afterReset']['lecture']['chip'] == t['default'] and seen['afterReset']['meeting']['chip'].endswith(t['custom'])
+    blocked = seen['emptyBlocked']
+    assert blocked['puts'] == 0 and t['fix'] in blocked['field'] and t['banner'] in blocked['banner'] and 'other' in blocked['open']   # an empty row is shown, not sent
+    assert t['empty'] in blocked['view']['said'] and seen['newRow']['said'] == []
+    bad = seen['badRows']['said']
+    assert t['chars'] in bad and t['long'].format(n=41, max=40) in bad
+    instr = seen['instr']
+    assert instr['count'] == '27 / 500' and instr['said'] == '' and seen['lines']['prevented'] and seen['lines']['value'] == '첫 줄 둘째 줄' and seen['lines']['note'] == t['lines']
+    assert seen['long']['count'] == '501 / 500' and seen['long']['said'] == t['long'].format(n=501, max=500) and seen['long']['invalid'] == 'true'
+    assert seen['longBlocked']['puts'] == 0 and seen['longBlocked']['field'].startswith(t['long'].format(n=501, max=500)) and seen['limit']['said'] == '' and seen['limit']['invalid'] is None
+    memo = seen['memo']
+    assert memo['off']['disabled'] and memo['off']['note'] == '' and {'ko': '다음 확인부터 적용', 'en': 'Applies from the next scan'}[lang] in memo['field']['tags']
+    assert not memo['on']['disabled'] and memo['on']['note'] == t['window'].format(min=10, max=300) and memo['set'] == t['window'].format(min=20, max=300) and t['above'] in memo['over']
+    for bad, said in [('bad3', 'range'), ('bad400', 'range'), ('badx', 'number')]:   # refused before sending; the field's own code follows the sentence
+        assert memo[bad]['puts'] == 0 and memo[bad]['error'] == f"{t[said]} 400 memo.min_sec", bad
+    daily = seen['daily']
+    assert daily['off'] == t['off'] and daily['placeholder'] == 'Daily/{date}.md' and {'ko': '다음 녹음부터 적용', 'en': 'Applies from the next recording'}[lang] in daily['field']['tags']
+    for name, said in [('dots', 'dots'), ('braces', 'braces'), ('ext', 'ext'), ('slash', 'braces'), ('invisible', 'chars')]:
+        assert daily[name]['said'].startswith(t[said]) and daily[name]['invalid'] == 'true' and daily[name]['example'] == '', name
+    assert daily['ok'] == {'said': '', 'example': t['example'].format(today=daily['ok']['today']), 'invalid': None, 'today': daily['ok']['today']}
+    sections = {'meeting': ['결정과 근거', listed[0], listed[2], '다음 주 일정', listed[3]], 'other': ['잡담']}
+    body = seen['saved']['bodies'][0]
+    assert body == {'summary.sections': sections, 'summary.instructions': '결정 사항을 먼저, 숫자에는 단위를 붙여 주세요.', 'memo.enabled': True, 'memo.min_sec': 20, 'daily_note.path': 'Daily/{date}.md'}
+    assert len(seen['saved']['bodies']) == 1   # one request, and only what changed (lecture was customised and reset: it is not in it)
+    assert t['saved'] in seen['saved']['banner'] and seen['saved']['bar'] == WORDS[lang]['none'] and seen['saved']['memo'] == [True, '20'] and seen['saved']['daily'] == 'Daily/{date}.md'
+    assert [v['type'] for v in seen['saved']['view'] if v['rows']] == ['meeting', 'other']   # the saved lists are what the screen shows now
+    # the very body the screen sent is accepted by the real API and lands in settings.toml
+    import tomllib
+    client, runtime, base = api
+    login(client, runtime, base)
+    (tmp_path / '.obsidian').mkdir()   # the notes folder (root/notes) is inside an Obsidian vault
+    response = client.put('/api/settings', json=body)
+    assert response.status_code == 200, response.text
+    on_disk = tomllib.loads((tmp_path / 'settings.toml').read_text(encoding='utf-8'))
+    assert on_disk['summary.sections'] == body['summary.sections'] and on_disk['summary.instructions'] == body['summary.instructions']
+    assert (on_disk['memo.enabled'], on_disk['memo.min_sec'], on_disk['daily_note.path']) == (True, 20, 'Daily/{date}.md')
+    assert runtime.settings.get('summary.sections') == body['summary.sections'] and runtime.settings.get('memo.min_sec') == 20
+
+
+@pytest.fixture
+def summary_refusals(api):
+    """What the real PUT /api/settings answers for each of the four when it refuses them."""
+    client, runtime, base = api
+    login(client, runtime, base)
+    wrong = {'sections': {'summary.sections': {'meeting': ['x' * 41]}}, 'instructions': {'summary.instructions': 'line one\nline two'}, 'memo': {'memo.min_sec': 3},
+             'daily': {'daily_note.path': 'Daily/{date}.md'}}   # the test notes folder has no Obsidian vault around it
+    answers = {}
+    for name, changes in wrong.items():
+        response = client.put('/api/settings', json=changes)
+        assert response.status_code == 400 and response.json()['field'] == next(iter(changes)), name
+        answers[name] = response.json()
+    assert not runtime.settings.path.exists()   # nothing was written
+    return answers
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_summary_layout_server_refusals_are_shown_in_words(find_harness, summary_refusals, lang):
+    t = SUM[lang]
+    seen = run_ui(find_harness, 'summaryRefused', lang=lang, settings=word_settings(lang), refusals=summary_refusals)
+    for name, key in [('sections', 'sections'), ('instructions', 'instructions'), ('memo', 'memo'), ('daily', 'daily')]:
+        view = seen[name]
+        assert view['error'].startswith(t[key]) and ('400' in view['error']), name   # the sentence in the display language, then the status code
+        assert t['banner'] in view['banner'] and '400' in view['banner'] and view['bar'] not in (WORDS[lang]['none'],), name   # the draft is kept
+    assert seen['staleLine'] is None   # editing the field takes the old line away
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_summary_layout_text_is_inert(find_harness, lang):
+    hostile = {'meeting': ['<img src=x onerror=alert(1)>', 'a\u202eb', 'x' * 5000], 'other': ['<script>window.pwned=1</script>']}
+    settings = word_settings(lang, **{'summary.sections': hostile, 'summary.instructions': '<svg onload=alert(1)>' + 'y' * 600, 'daily_note.path': '<img src=x onerror=alert(1)>.md'})
+    seen = run_ui(find_harness, 'summaryHostile', lang=lang, settings=settings)
+    assert not MARKUP & set(seen['tags']) and seen['links'] == 0 and seen['pwned'] is None and not MARKUP & set(seen['daily']['tags'])
+    meeting, other = seen['rows']
+    assert meeting['rows'][0] == '<img src=x onerror=alert(1)>' and meeting['peekLength'] < 5200 and len(meeting['said']) == 2 and other['said'] == []   # the bad ones are marked, the text is a value
+    assert seen['instr']['count'] == '621 / 500' and seen['daily']['value'] == '<img src=x onerror=alert(1)>.md' and seen['daily']['said'] == ''
+    assert seen['blocked']['puts'] == 0 and SUM[lang]['banner'] in seen['blocked']['banner'] and seen['blocked']['sections']   # an edited bad heading is not sent
+
+
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+def test_summary_layout_without_the_keys_is_defaults_and_saves_only_the_change(find_harness, lang):
+    settings = word_settings(lang)
+    for key in ('summary.sections', 'summary.instructions', 'memo.enabled', 'memo.min_sec', 'daily_note.path'):
+        del settings[key]
+    seen = run_ui(find_harness, 'summaryMissing', lang=lang, settings=settings)
+    assert all(chip == SUM[lang]['default'] for _, chip in seen['view']) and seen['instr'] == '' and seen['daily'] == '' and seen['memo'] == [False, '', True]
+    assert seen['body'] == [{'daily_note.path': 'Daily/{date}.md'}]
+
+
+def test_classes_the_search_and_summary_layout_add_are_styled():
+    css = (STATIC / 'qc.css').read_text()
+    sources = ''.join((STATIC / name).read_text() for name in ('lib/search.js', 'lib/shell.js', 'screens/settings-summary.js', 'screens/settings.js'))
+    for name in ('find-trigger', 'find-icon', 'find', 'find-form', 'find-input', 'find-status', 'find-results', 'is-busy', 'find-groups', 'find-group', 'find-gh', 'find-title', 'find-hits', 'find-hit',
+                 'find-where', 'find-ts', 'find-sp', 'find-snip', 'find-more', 'find-dlg', 'find-bar', 'sumtypes', 'sumtype', 'sumhead', 'sumname', 'sumpeek', 'sumbody', 'sumfixed', 'sumrows',
+                 'sumrow', 'sumn', 'sumctl', 'sumsaid', 'sumdl', 'area'):
+        assert re.search(rf'[\'" ]{re.escape(name)}[\'" ]', sources), name   # the screens use it
+        assert re.search(rf'\.{re.escape(name)}(?![\w-])', css), name   # and the stylesheet has a rule for it
 
 
 # The harness: it imports the real modules from quietclerk/server/static and drives them with fake browser parts.

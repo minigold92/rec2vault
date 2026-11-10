@@ -64,7 +64,8 @@ def waiting_info(row, now=None):
 
 def _options(settings):
     return (Path(settings.get('inbox')), settings.root / 'archive', settings.root / 'quarantine',
-            settings.get('stable_sec'), settings.get('min_duration_sec'),
+            settings.get('stable_sec'), min(settings.get('min_duration_sec'), settings.get('memo.min_sec'))
+            if settings.get('memo.enabled') else settings.get('min_duration_sec'),
             datetime.strptime(settings.get('since'), '%Y-%m-%d %H:%M'), settings.root / 'include.txt')
 
 

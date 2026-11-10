@@ -84,3 +84,11 @@ export function replace(parent, ...kids) {
   parent.replaceChildren();
   return append(parent, kids);
 }
+
+// Turns a class on or off by the attribute alone (no classList, so the node test harness's small fake DOM can run it too).
+export function flag(el, name, on) {
+  const names = new Set((el.getAttribute('class') || '').split(/\s+/).filter(Boolean));
+  if (on) names.add(name);
+  else names.delete(name);
+  el.setAttribute('class', [...names].join(' '));
+}

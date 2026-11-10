@@ -219,7 +219,7 @@ def publish(ctx, props, generated, tasks, language):
         known = {_task_key(row['text']) for row in ctx.con.execute('SELECT text FROM note_tasks WHERE job_id=?', (ctx.job['job_id'],))}
         body, new_tasks = merge_body(body, header, generated, [t for t in tasks if _task_key(t) not in known], language), []
     target = existing or output / render.note_name(datetime.strptime(ctx.job['recorded_at'], '%Y%m%d-%H%M%S'),
-                                                  merged.get('title'), 'Recording')
+                                                  merged.get('title'), 'Recording', mtype=merged.get('type'))
     if not safe_path(output, target) or (not existing and target.exists()):
         raise NoteConflict()
     content = dump_frontmatter(merged).encode() + body
@@ -231,6 +231,9 @@ def publish(ctx, props, generated, tasks, language):
     temp = temp_dir / (ctx.run_id + '.md')
     pending = {'fields': fields, 'tasks': new_tasks, 'review_reasons': merged.get('review_reasons', []),
                'output': str(output), 'previous_b64': base64.b64encode(old).decode('ascii') if old is not None else None}
+    pending.update(getattr(ctx, 'publication_extra', {}))
+    if hasattr(ctx, 'override_state'):
+        pending['overrides'] = ctx.override_state
     try:
         durable_write(temp, content)
         durable_write(Path(str(temp) + '.json'), json.dumps(pending, ensure_ascii=False).encode())
@@ -258,6 +261,8 @@ def publish(ctx, props, generated, tasks, language):
         temp_dir.rmdir()  # leave no empty engine folder in the synced vault
     except OSError:
         pass  # another run's pending publication still lives there
+    from ..hooks import after_publish
+    after_publish(ctx.con, ctx.job['job_id'])
     return target, merged.get('review_reasons', [])
 
 
@@ -286,9 +291,14 @@ def recover_publication(con, publication):
         temp.unlink(missing_ok=True)
         pending_path.unlink(missing_ok=True)
         store.discard_prepared_publication(con, publication['run_id'])
+        if 'rewrite' in pending:
+            from ..overrides import rollback_rewrite
+            rollback_rewrite(con, publication['run_id'], pending['rewrite'])
     elif publication['state'] == 'renamed':
         if digest(target) != publication['new_hash']:
             store.recover_publication_conflict(con, publication['run_id'])
             return
         store.finish_recovered_publication(con, publication['run_id'], pending)
         pending_path.unlink(missing_ok=True)
+        from ..hooks import after_publish
+        after_publish(con, publication['job_id'])

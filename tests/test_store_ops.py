@@ -50,6 +50,10 @@ def test_running_delete_defers_until_checkpoint_and_cleans_conversation_fields(s
     store.start_stage(con, 'job', run_id, 'boot', 'transcribe', sent_fields=['transcript'])
     assert store_ops.request_delete_local(con, 'job')
     assert not store_ops.request_delete_local(con, 'job')
+    # Names, edits and the search index are conversation data too (contract 10.8).
+    con.execute("INSERT INTO speaker_overrides VALUES('job','S1','이름',1,NULL,0)")
+    con.execute("INSERT INTO transcript_edits VALUES('job','t1','고친 말','x',0)")
+    con.execute("INSERT INTO search(job_id,kind,line_id,start,speaker,text,compact) VALUES('job','line','t1',0,'S1','말','말')")
     assert store_ops.deleted(con, 'job')
     assert store.job(con, 'job')['exclude_requested']
     assert store_ops.pending_deletions(con)[0]['status'] == 'running'
@@ -59,7 +63,8 @@ def test_running_delete_defers_until_checkpoint_and_cleans_conversation_fields(s
     assert store_ops.finish_delete_local(con, 'job')
     assert not store_ops.finish_delete_local(con, 'job')
     assert not store_ops.pending_deletions(con)
-    for table in ('runs', 'stage_runs', 'publications', 'note_fields', 'note_tasks'):
+    for table in ('runs', 'stage_runs', 'publications', 'note_fields', 'note_tasks',
+                  'speaker_overrides', 'transcript_edits', 'search'):
         assert con.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0
     row = store.job(con, 'job')
     assert row['source_name'] == '' and row['archive_path'] is None and row['note_path'] is None

@@ -32,7 +32,9 @@ DEFAULTS = {'root': str(Path.home() / 'QuietClerk'), 'inbox': None, 'output': No
             'providers.ollama.endpoint': 'http://127.0.0.1:11434',
             'providers.omp.profile': 'quietclerk', 'providers.codex.effort': 'low', 'providers.codex.speed': 'standard',
             'server.port': 0, 'retention.wav_days': 7, 'ui.language': 'en',
-            'updates.check': True, 'vocabulary.terms': [], 'vocabulary.replace': []}
+            'updates.check': True, 'vocabulary.terms': [], 'vocabulary.replace': [],
+            'summary.sections': {}, 'summary.instructions': '',
+            'memo.enabled': False, 'memo.min_sec': 10, 'daily_note.path': ''}
 PROVIDERS = ('codex', 'claude', 'gemini', 'ollama', 'omp')
 
 
@@ -48,11 +50,12 @@ def _flatten(data, prefix=''):
         name = f'{prefix}.{key}' if prefix else key
         if name == 'providers.agy' or name.startswith('providers.agy.'):
             _validate(name, value)  # Reject even an empty removed-provider table.
-        if isinstance(value, dict) and name not in ('providers.consent', 'vocabulary.terms', 'vocabulary.replace'):
+        if isinstance(value, dict) and name not in ('providers.consent', 'vocabulary.terms', 'vocabulary.replace', 'summary.sections'):
             result.update(_flatten(value, name))
         else:
             result[name] = _validate(name, value) if name.startswith('vocabulary.') else value
-    return result
+    return {key: _validate(key, value) if key.startswith(('summary.', 'memo.', 'daily_note.'))
+            else value for key, value in result.items()}
 
 
 def _vocabulary_text(key, value):
@@ -82,6 +85,30 @@ def _validate(key, value):
                'notes.output_language': ('same', 'ko', 'en'), 'ui.language': ('ko', 'en')}
     if key in options and value not in options[key]:
         raise SettingsError(key, 'invalid language')
+    if key == 'summary.sections':
+        types = {'meeting', 'status_update', 'presentation', 'lecture', 'one_on_one', 'brainstorm', 'other'}
+        if set(value) - types:
+            raise SettingsError(key, 'expected existing meeting types')
+        result = {}
+        for kind, headings in value.items():
+            if not isinstance(headings, list) or not 1 <= len(headings) <= 12:
+                raise SettingsError(key, 'expected 1–12 headings per type')
+            result[kind] = [_vocabulary_text(key, heading) for heading in headings]
+        return result
+    if key in ('summary.instructions', 'daily_note.path'):
+        value = value.strip()
+        limit = 500 if key == 'summary.instructions' else 4096
+        if len(value) > limit or any(unicodedata.category(c).startswith('C') for c in value):
+            raise SettingsError(key, f'expected at most {limit} characters without control characters')
+        if key == 'daily_note.path' and value:
+            from .daily import template_path
+            try:
+                template_path(value, datetime(2000, 1, 1))
+            except ValueError as exc:
+                raise SettingsError(key, str(exc)) from exc
+        return value
+    if key == 'memo.min_sec' and not 5 <= value <= 299:
+        raise SettingsError(key, 'expected 5–299 seconds')
     if key.startswith('vocabulary.'):
         if len(value) > 200:
             raise SettingsError(key, 'expected at most 200 entries')
@@ -195,6 +222,14 @@ def load(path=None, environ=None):
     for key, suffix in (('inbox', 'inbox'), ('output', 'notes')):
         if values[key] is None:
             values[key] = str(Path(values['root']) / suffix)
+    if values['daily_note.path']:
+        # Only the template here: a vault that is briefly unavailable (sync, unmounted
+        # disk) must not stop the service. Saving checks the vault (check_daily_note).
+        from .daily import template_path
+        try:
+            template_path(values['daily_note.path'], datetime(2000, 1, 1))
+        except (OSError, ValueError) as exc:
+            raise SettingsError('daily_note.path', str(exc)) from exc
     defaults = _installation_defaults(Path(values['root']))
     for key, value in defaults.items():
         if key not in file_values and key not in locked:
@@ -202,6 +237,22 @@ def load(path=None, environ=None):
     return Settings(values, copy.deepcopy(file_values), frozenset(locked), path)
 
 
+def memo_mode(settings, duration):
+    """A short recording is a memo only in this immutable settings snapshot."""
+    return bool(settings.get('memo.enabled') and duration is not None and
+                (settings.get('memo.min_sec') or 10) <= duration < settings.get('min_duration_sec'))
+
+
 MAX_DURATION_SEC = 3 * 3600
 MAX_BYTES = 1 << 30
 CORRECT_CHUNK_TURNS = 60
+
+
+def check_daily_note(values):
+    """Full daily-note checks (enclosing vault, links) for a settings save."""
+    if values.get('daily_note.path'):
+        from .daily import destination
+        try:
+            destination(values, datetime(2000, 1, 1))
+        except (OSError, ValueError) as exc:
+            raise SettingsError('daily_note.path', str(exc)) from exc

@@ -271,8 +271,12 @@ def test_correction_classification_summary_request_vocabulary_and_calendar(monke
 
 
 def test_text_cache_keys_cover_vocabulary_date_and_speed(tmp_path):
+    from quietclerk import store
+    con = store.connect(tmp_path / 'state.sqlite3')
     ctx = SimpleNamespace(settings={'output': str(tmp_path), 'vocabulary.terms': ['old']},
-                          job={'language_override': 'ko', 'recorded_at': '20261110-100000'}, paths={})
+                          job={'job_id': 'synthetic', 'language_override': 'ko', 'recorded_at': '20261110-100000',
+                               'duration_sec': 600},
+                          con=con, paths={})
     params = {stage.name: stage.params(ctx) for stage in text.stages() if stage.name != 'turns'}
     ctx.settings['vocabulary.terms'] = ['new']
     for stage in text.stages():
@@ -282,6 +286,7 @@ def test_text_cache_keys_cover_vocabulary_date_and_speed(tmp_path):
     before = summary_stage.params(ctx)
     ctx.job['recorded_at'] = '20261111-100000'
     assert summary_stage.params(ctx) != before
+    con.close()
 
 
 @pytest.mark.parametrize('objects', [False, True])

@@ -3,7 +3,7 @@ import json
 import subprocess
 import sys
 
-from .. import procs, store
+from .. import artifacts, config, procs, store
 from ..backends import InvalidOutput, ModelMissing
 from ..backends.mlx import MLXBackend, STAGE_MODELS, QWEN_LANGUAGES
 from ..executor import Stage, StageFailure, NoSpeech
@@ -19,6 +19,9 @@ def _identities(roles):
 
 
 def _params(name, ctx):
+    if name == 'diarize' and config.memo_mode(ctx.settings, ctx.job['duration_sec']):
+        return {'backend': 'single_speaker', 'rule_version': 1, 'models': {},
+                'duration_sec': ctx.job['duration_sec']}
     roles = STAGE_MODELS[name]
     params = {'backend': 'mlx', 'rule_version': 3,
               'models': {} if name == 'detect_language' and fixed_language(job_settings(ctx)) else
@@ -43,6 +46,11 @@ def _model(name):
     def execute(ctx, out):
         ctx.checkpoint()
         params = ctx.stage_params
+        if name == 'diarize' and params.get('backend') == 'single_speaker':
+            artifacts.write_json(out, {'segments': [
+                {'start': 0.0, 'end': ctx.job['duration_sec'], 'speaker': 'S1'}],
+                'speaker_review': []})
+            return 'not_run'
         snapshot = ctx.work / 'run-settings.json'
         snapshot.write_text(json.dumps({**job_settings(ctx), 'model_ids': params['models']}), encoding='utf-8')
         command = [sys.executable, '-m', 'quietclerk.worker', '--run-settings', str(snapshot),

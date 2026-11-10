@@ -51,6 +51,7 @@ def save(settings, changes, *, environ=None):
         # Preserve the current root when tests or a CLI supplied it explicitly.
         env.setdefault('QC_ROOT', str(settings.root))
         validated = config.load(temporary, environ=env)
+        config.check_daily_note(validated.snapshot())
         os.replace(temporary, settings.path)
         updated = config.Settings(validated.snapshot(), validated.file_values,
                                   settings.environment_keys, settings.path)

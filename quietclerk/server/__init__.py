@@ -41,6 +41,7 @@ from starlette.routing import Route
 from .. import artifacts, backfill, config, intake, providers, selfupdate, store, store_ops
 from ..notes import NoteConflict, migration
 from . import integrations
+from .. import overrides
 from .auth import Auth, COOKIE
 from .settings import LockedSetting, save
 
@@ -397,6 +398,9 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
         else:
             with closing(store.connect(runtime.db)):
                 pass
+        from .. import search
+        with closing(store.connect(runtime.db)) as con:
+            search.bootstrap(con, runtime.settings.root)
         auth.refresh()
         try:
             yield
@@ -485,6 +489,12 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
         settings = runtime.settings
         with closing(store.connect(runtime.db)) as con:
             try:
+                if path == '/api/search' and method == 'GET':
+                    from .. import search
+                    return JSONResponse(search.query(con, request.query_params.get('q'), request.query_params.get('limit', 20), request.query_params.get('offset', 0)))
+                if path.startswith('/api/jobs/') and request.path_params.get('action') == 'export' and method == 'GET':
+                    from .. import export
+                    return export.download(con, request.path_params['job_id'], settings.root, request.query_params)
                 if path == '/api/session' and method == 'GET':
                     return JSONResponse({'csrf_token': request.scope['qc.session'].csrf})
                 if path == '/api/logout' and method == 'POST':
@@ -524,6 +534,8 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     job_id = request.path_params['job_id']
                     row = store.job(con, job_id)
                     action = request.path_params.get('action')
+                    if action in ('speakers', 'transcript'):
+                        return overrides.api(con, settings, job_id, action, request.path_params.get('item'), method, data)
                     if action is None and method == 'GET':
                         runs = []
                         for run in con.execute('SELECT * FROM runs WHERE job_id=? ORDER BY started_at,run_id', (job_id,)):
@@ -641,7 +653,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
         if isinstance(data, Response):
             return data
         key = request.headers.get('idempotency-key')
-        if key and request.method in ('POST', 'PUT'):
+        if key and request.method in ('POST', 'PUT', 'DELETE'):
             if len(key) > 128:
                 return JSONResponse({'error': 'idempotency key too long'}, 400)
             cache_key = (request.cookies.get(COOKIE), key)
@@ -691,7 +703,9 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
     for path, methods in (
         ('/api/session', ['GET']), ('/api/logout', ['POST']), ('/api/status', ['GET']),
         ('/api/update', ['GET']), ('/api/update/{action}', ['POST']),
+        ('/api/search', ['GET']),
         ('/api/jobs', ['GET']), ('/api/jobs/{job_id}', ['GET']),
+        ('/api/jobs/{job_id}/{action}/{item}', ['GET', 'PUT', 'POST', 'DELETE']),
         ('/api/jobs/{job_id}/{action}', ['GET', 'POST', 'PUT']),
         ('/api/settings', ['GET', 'PUT']), ('/api/backlog', ['GET']), ('/api/backlog/request', ['POST']),
         ('/api/pause', ['POST']), ('/api/resume', ['POST']), ('/api/scan', ['POST']),

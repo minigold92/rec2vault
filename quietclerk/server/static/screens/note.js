@@ -2,15 +2,19 @@
 // Data: the server embeds the minutes text as JSON in the page (no /api endpoint serves note text yet:
 // proposal GET /api/notes/{job_id}); /api/jobs/{id} gives the job, runs and stages (what was sent where);
 // /api/jobs/{id}/audio plays with Range. Every string from the transcript or summary goes in as text.
-import {h, replace} from '../lib/dom.js';
+import {flag, h, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {get, post, jobPath} from '../lib/api.js';
-import {subscribe} from '../lib/live.js';
+import {live, subscribe} from '../lib/live.js';
 import {btn, chip, code, empty, banner, problemBlock} from '../lib/ui.js';
 import {describe} from '../lib/jobs.js';
 import {makeActions, languageSelect, problemBanner} from '../lib/cards.js';
 import {dur, fullDate, stamp} from '../lib/fmt.js';
 import {setTitle, syncEngineControls} from '../lib/shell.js';
+import {nameSpeakers} from '../lib/note-text.js';
+import {createSpeakers} from '../lib/speakers.js';
+import {createTranscript} from '../lib/transcript.js';
+import {createExport} from '../lib/export-menu.js';
 
 const TYPE = {meeting: ['회의', 'Meeting'], status_update: ['현황 공유', 'Status update'], presentation: ['발표', 'Presentation'],
   lecture: ['강의', 'Lecture'], one_on_one: ['1:1', '1:1'], brainstorm: ['브레인스토밍', 'Brainstorm'], other: ['기타', 'Other']};
@@ -68,7 +72,8 @@ const modelNames = (rows) => {
 };
 
 // The engine's review codes in words. Same meaning as the "Review needed" lines render.py writes into the note
-// (and the marks quality.py puts in the text: ‘check source’ / ‘근거 확인’, ‘Check numbers’ / ‘숫자 확인’).
+// (and the marks quality.py puts in the text: ‘check source’ / ‘근거 확인’, ‘Check numbers’ / ‘숫자 확인’). The last two codes
+// (contract §10.8 A/B, "Redo from scratch" dropping your names, merges or edited lines) have no line in the note, only this one.
 const REASONS = {
   type_uncertain: ['회의 유형이 확실하지 않아요', 'The meeting type is uncertain'],
   language_uncertain: ['언어가 섞여 있어요', 'Mixed languages'],
@@ -79,6 +84,8 @@ const REASONS = {
   unsupported_deadline: ['할 일 기한이 인용한 대화록으로 뒷받침되지 않아 ‘근거 확인’을 붙였어요', 'A task deadline is not backed by the lines it cites; it is marked ‘check source’'],
   unsupported_number: ['숫자나 단위가 인용한 대화록과 달라요. ‘숫자 확인’ 표시를 확인해 주세요', 'Some numbers or units differ from the lines they cite. Check the ‘Check numbers’ marks'],
   weak_citation: ['일부 문장이 인용한 대화록과 겹치는 낱말이 적어요. 근거를 확인해 주세요', 'Some sentences share few words with the lines they cite. Check the evidence'],
+  speaker_overrides_dropped: ['처음부터 다시 처리하면서 화자 번호가 바뀌어, 직접 확정한 이름과 합치기를 버렸어요. 화자에서 다시 정해 주세요', 'Reprocessing renumbered the speakers, so the names you confirmed and the merges were dropped. Set them again under Speakers'],
+  transcript_edits_dropped: ['처음부터 다시 처리하면서 받아쓰기 글이 달라져, 직접 고친 줄을 버렸어요. 필요하면 다시 고쳐 주세요', 'Reprocessing changed the transcript, so the lines you edited were dropped. Edit them again if you need to'],
 };
 
 const REASON = (reason) => {
@@ -99,37 +106,111 @@ const reasonChips = (reasons) => {
     rest > 0 ? chip('line', null, L(`외 ${rest}개`, `+${rest} more`)) : null);
 };
 
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
+const SPEED_KEY = 'qc.note.speed';
+const rememberedSpeed = () => {
+  try {
+    const value = Number(sessionStorage.getItem(SPEED_KEY));
+    return SPEEDS.includes(value) ? value : 1;
+  } catch (_) {
+    return 1;
+  }
+};
+
 export async function mount({content, jobId}) {
   const data = readData();
-  const state = {job: null, runs: [], notice: null, confirm: false, audio: 'checking'};
+  const state = {job: null, runs: [], notice: null, confirm: false, audio: 'checking', speed: rememberedSpeed(), follow: true, tab: 'sum', fresh: false};
   const audioUrl = jobPath(jobId, 'audio');
   const turns = data.found ? data.turns : [];
   let stopAt = null;
-  let activeLine = -1;
   let frame = 0;
+  let loading = false;
+  let regen = null;   // set when this page asked for a new summary: whether the job was seen running since
 
-  // Containers that live as long as the page: the player must never be detached while it plays.
+  // Containers that live as long as the page: the player must never be detached while it plays, and a line being edited
+  // or a speaker name being typed must never be redrawn by an unrelated update.
   const audio = h('audio', {controls: true, preload: 'metadata', src: audioUrl, 'data-engine': ''});
   const parts = {
-    crumb: h('div', {class: 'slot'}), notices: h('div', {class: 'slot'}), main: h('div', {class: 'stack gap4'}),
+    crumb: h('div', {class: 'slot'}), notices: h('div', {class: 'slot'}),
+    head: h('div', {class: 'slot'}), confirm: h('div', {class: 'slot'}), tabs: h('div', {class: 'slot'}), summary: h('div', {class: 'slot'}),
     speakers: h('div', {class: 'slot'}), records: h('div', {class: 'slot'}), missing: h('div', {class: 'slot'}),
-    playerTitle: h('h2', {id: 'pl-h'}), playerBody: h('div', {class: 'slot'}), playerHint: h('p', {class: 'small muted'}),
+    playerTitle: h('h2', {id: 'pl-h'}), playerBody: h('div', {class: 'slot'}), playerTools: h('div', {class: 'row player-tools'}), playerHint: h('p', {class: 'small muted'}),
   };
-  const playerCard = h('section', {class: 'card tight player player-card', 'aria-labelledby': 'pl-h'}, parts.playerTitle, parts.playerBody, parts.playerHint);
-  const layout = h('div', {class: 'split note-split'}, parts.main, h('div', {class: 'note-side'}, playerCard, parts.speakers, parts.records));
+  const running = () => !!state.job && state.job.status === 'running';
+  const target = () => state.job || {job_id: jobId};
+  const actions = makeActions({after: load, notice: (node) => { state.notice = node; render(); }});
+  const rerun = (mode) => {   // a new summary (or a new run) was asked for here: say when it is ready
+    regen = {ran: false};
+    state.fresh = false;
+    return actions.run(target(), mode);
+  };
+
+  // The speaker panel, the transcript card and the export menu exist only for minutes that were found.
+  let speakers = null, transcript = null, exporter = null;
+  if (data.found) {
+    speakers = createSpeakers({jobId, hints: data.speakers, audioOk: () => state.audio === 'ok' || state.audio === 'checking',
+      isRunning: running, onRunning: markRunning, onChange: namesChanged});
+    transcript = createTranscript({jobId, fallback: turns, names: () => speakers.names(), isRunning: running, onRunning: markRunning,
+      resummarize: () => rerun('resummarize')});
+    exporter = createExport({jobId});
+    parts.speakers.append(speakers.node);
+  }
+  const playerCard = h('section', {class: 'card tight player player-card', 'aria-labelledby': 'pl-h'}, parts.playerTitle, parts.playerBody, parts.playerTools, parts.playerHint);
+  const main = h('div', {class: 'stack gap4'}, parts.head, exporter ? exporter.panel : null, parts.confirm, parts.tabs, parts.summary, transcript ? transcript.node : null);
+  const layout = h('div', {class: 'split note-split'}, main, h('div', {class: 'note-side'}, playerCard, parts.speakers, parts.records));
   layout.hidden = !data.found;
   content.replaceChildren(parts.crumb, h('div', {class: 'topbar'}, h('h1', {id: 'note-title'})), parts.notices, layout, parts.missing);
 
   async function load() {
+    loading = true;
+    const was = running();
     try {
       const detail = await get(jobPath(jobId));
       state.job = detail.job;
       state.runs = detail.runs;
     } catch (_) { /* keep what we have */ }
+    loading = false;
+    render();
+    if (!speakers || was === running()) return;
+    speakers.render();
+    transcript.render();
+    if (was) {   // processing ended: what it left may differ from what is shown
+      speakers.load();
+      transcript.load();
+    }
+  }
+
+  // A write was refused with job_running before the page knew: lock the editors now and read the job again.
+  function markRunning() {
+    if (state.job) state.job = {...state.job, status: 'running'};
+    speakers.render();
+    transcript.render();
+    load();
+  }
+
+  // Names or merges changed: the speaker column of the transcript and the summary show them.
+  async function namesChanged() {
+    await transcript.load();
+    transcript.render();
     render();
   }
 
-  const actions = makeActions({after: load, notice: (node) => { state.notice = node; render(); }});
+  // The stream names every job's state: read this job again when it moved, and say when a new summary is ready.
+  function watchJob() {
+    const row = ((live.snapshot && live.snapshot.jobs) || []).find((job) => job.job_id === jobId);
+    if (!row || !state.job) return;
+    let ready = false;
+    if (regen) {
+      if (row.status === 'running') regen.ran = true;
+      else if (row.status === 'done' && regen.ran) {
+        regen = null;
+        state.fresh = true;
+        ready = true;
+      }
+    }
+    if (!loading && (row.status !== state.job.status || row.updated_at !== state.job.updated_at)) load();
+    else if (ready) render();
+  }
 
   // Probe with a 1-byte Range request so a deleted copy (410) is explained instead of a silent dead player.
   async function probeAudio() {
@@ -140,13 +221,21 @@ export async function mount({content, jobId}) {
       state.audio = '0';
     }
     render();
+    if (speakers) speakers.render();
   }
-  audio.addEventListener('error', () => { if (state.audio === 'ok') { state.audio = 'error'; render(); } });
+  audio.addEventListener('error', () => { if (state.audio === 'ok') { state.audio = 'error'; render(); if (speakers) speakers.render(); } });
+
+  // The speed sticks to the element: load() would put it back to the default, so both are set.
+  function applySpeed() {
+    audio.defaultPlaybackRate = state.speed;
+    audio.playbackRate = state.speed;
+  }
 
   function play(start, end, button) {
-    for (const el of content.querySelectorAll('.ts.playing')) el.classList.remove('playing');
-    if (button) button.classList.add('playing');
+    for (const el of content.querySelectorAll('.playing')) flag(el, 'playing', false);
+    if (button) flag(button, 'playing', true);
     stopAt = end;
+    applySpeed();
     const go = () => {
       audio.currentTime = start;
       audio.play().catch(() => {});
@@ -159,19 +248,8 @@ export async function mount({content, jobId}) {
   }
 
   function highlight() {
-    const t = audio.currentTime;
-    let lo = 0, hi = turns.length - 1, found = -1;
-    while (lo <= hi) {   // last line that starts at or before t
-      const mid = (lo + hi) >> 1;
-      if (turns[mid].start <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
-    }
     // Before the first play the audio sits at 0:00: nothing is "being played" yet.
-    const index = found >= 0 && t < turns[found].end && !(audio.paused && t === 0) ? found : -1;
-    if (index === activeLine) return;
-    const items = content.querySelectorAll('.tx li');
-    if (items[activeLine]) items[activeLine].classList.remove('on');
-    if (items[index]) items[index].classList.add('on');
-    activeLine = index;
+    if (transcript) transcript.setPlayhead(audio.currentTime, {playing: !audio.paused, idle: audio.paused && audio.currentTime === 0});
   }
 
   function watch() {
@@ -184,7 +262,7 @@ export async function mount({content, jobId}) {
   }
   audio.addEventListener('play', () => { if (!frame) frame = requestAnimationFrame(watch); });
   audio.addEventListener('pause', () => {
-    for (const el of content.querySelectorAll('.ts.playing')) el.classList.remove('playing');
+    for (const el of content.querySelectorAll('.playing')) flag(el, 'playing', false);
     highlight();
   });
   audio.addEventListener('seeked', highlight);
@@ -206,50 +284,25 @@ export async function mount({content, jobId}) {
       'aria-label': L(`${at} 구간 듣기 (${cite.id})`, `Play from ${at} (${cite.id})`)}, at);
   };
 
-  function sectionView(section) {
+  function sectionView(section, names) {
     const list = h('ul', null, section.items.map((item) => h('li', {class: item.task ? 'task' : null},
-      item.text, ' ', item.cites.map((cite) => [evidence(cite), ' ']))));
+      nameSpeakers(item.text, names), ' ', item.cites.map((cite) => [evidence(cite), ' ']))));
     if (section.kind === 'review') return h('div', {class: 'callout'}, h('h2', null, section.heading), list);
     return h('div', {class: 'sec'}, h('h2', null, section.heading), list,
-      section.kind === 'tasks' ? h('p', {class: 'small muted'}, L('담당은 이름이 아닌 화자 번호로 적혀요. 노트의 할 일 목록은 고친 그대로 남아요.', 'Owners are speaker numbers, not names. Your edits to the note\'s task list are kept.')) : null);
+      section.kind === 'tasks' ? h('p', {class: 'small muted'}, names.size
+        ? L('이름을 확정한 화자는 이름으로, 나머지는 화자 번호로 적혀요. 노트의 할 일 목록은 고친 그대로 남아요.', 'Speakers whose names you confirmed show by name, the rest by speaker number. Your edits to the note\'s task list are kept.')
+        : L('담당은 화자 번호로 적혀요. 화자에서 이름을 확정하면 이름으로 바뀌어요. 노트의 할 일 목록은 고친 그대로 남아요.', 'Owners are speaker numbers. Confirm a name under Speakers and it shows by name. Your edits to the note\'s task list are kept.')) : null);
   }
 
   function summaryCard() {
+    const names = speakers ? speakers.names() : new Map();
     const bad = [...new Set(data.sections.flatMap((s) => s.items.flatMap((i) => i.cites.filter((c) => !c.ok).map((c) => c.id))))];
     return h('section', {class: 'card', id: 'sum', 'aria-label': L('요약', 'Summary')},
       bad.length ? h('p', {class: 'banner warn small'}, h('span', {class: 'ic', 'aria-hidden': 'true'}, h('span', null, '!')),
         h('span', null, L(`근거 번호 ${bad.map((id) => `[?${id}]`).join(', ')}은 대화록에 없어요. 지우지 않고 남겨 두었으니 원문과 맞는지 확인해 주세요.`,
           `Evidence ID ${bad.map((id) => `[?${id}]`).join(', ')} isn't in the transcript. It's kept, not removed — please check it against the transcript.`), ' ', code('review: missing_evidence'))) : null,
-      data.sections.map(sectionView),
+      data.sections.map((section) => sectionView(section, names)),
       h('p', {class: 'small muted'}, L('근거 시각이 달렸다고 내용이 맞다는 뜻은 아니에요. 눌러서 들어 보세요.', 'A linked time doesn\'t prove the sentence is right. Press it and listen.')));
-  }
-
-  function transcriptCard() {
-    return h('section', {class: 'card', id: 'tx', 'aria-labelledby': 'tx-h'},
-      h('div', {class: 'card-head'}, h('h2', {id: 'tx-h'}, L('전체 대화록', 'Full transcript')),
-        h('span', {class: 'small muted'}, L(`AI 받아쓰기 초안 · 발언 ${turns.length}개`, `AI transcript draft · ${turns.length} turns`))),
-      h('ol', {class: 'tx'}, turns.map((turn) => {
-        const at = stamp(turn.start);
-        return h('li', {'data-start': turn.start, 'data-end': turn.end},
-          h('span', null, h('button', {class: 'ts', type: 'button', 'data-engine': '', 'data-seek': `${turn.start}-${turn.end}`,
-            'aria-label': L(`${at} 구간 듣기`, `Play from ${at}`)}, at), h('span', {class: 'id'}, turn.id)),
-          h('span', {class: 'sp'}, turn.speaker || '—'), h('span', null, turn.text));
-      })));
-  }
-
-  function speakersCard() {
-    return h('section', {class: 'card tight', 'aria-labelledby': 'sp-h'},
-      h('h2', {id: 'sp-h'}, L('화자', 'Speakers')),
-      h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
-        h('thead', null, h('tr', null, h('th', null, L('화자', 'Speaker')), h('th', null, L('역할', 'Role')), h('th', null, L('이름', 'Name')))),
-        h('tbody', null, data.speakers.map((who) => h('tr', null,
-          h('td', {'data-k': L('화자', 'Speaker')}, h('b', null, who.label),
-            who.split_suspect ? [h('br'), chip('warn', '!', L('분리 오류 의심', 'Split suspected'))] : null),
-          h('td', {'data-k': L('역할', 'Role')}, who.role || '—'),
-          h('td', {class: who.name ? null : 'muted', 'data-k': L('이름', 'Name')}, who.name
-            ? [h('span', null, who.name), ' ', who.name_start !== null ? evidence({ok: true, id: 'name', start: who.name_start, end: who.name_start + 3}) : null] : '—')))))),
-      h('p', {class: 'small muted'}, L('‘분리 오류 의심’은 한 화자 번호에 두 사람 말이 섞였을 수 있다는 뜻이에요. S1…은 자동으로 나눈 번호이고 실제 이름이 아니에요.',
-        '‘Split suspected’ means one speaker number may contain two people. S1… are automatic labels, not names.')));
   }
 
   function recordsCard() {
@@ -285,6 +338,17 @@ export async function mount({content, jobId}) {
     audio.setAttribute('aria-label', L('녹음 듣기', 'Listen'));
     parts.playerHint.hidden = !ok;
     parts.playerHint.textContent = L('근거 시각을 누르면 그 발언 구간만 들려줘요.', 'Press an evidence time to play just that turn.');
+    parts.playerTools.hidden = !ok || !data.found;
+    replace(parts.playerTools,
+      h('label', {class: 'small row gap6'}, h('span', null, L('재생 속도', 'Speed')),
+        h('select', {class: 'input compact', id: 'pl-speed', value: String(state.speed), on: {change: (event) => {
+          state.speed = Number(event.target.value);
+          applySpeed();
+          try { sessionStorage.setItem(SPEED_KEY, String(state.speed)); } catch (_) { /* the speed is just not remembered */ }
+        }}}, SPEEDS.map((rate) => h('option', {value: String(rate)}, `${rate}×`)))),
+      h('label', {class: 'check small'},
+        h('input', {type: 'checkbox', id: 'pl-follow', checked: state.follow, on: {change: (event) => { state.follow = event.target.checked; if (transcript) transcript.setFollow(state.follow); }}}),
+        h('span', null, L('재생 따라가기', 'Follow while playing'))));
     if (ok) {
       if (parts.playerBody.firstChild !== audio) parts.playerBody.replaceChildren(audio);
       return;
@@ -363,6 +427,31 @@ export async function mount({content, jobId}) {
     h('p', {class: 'center'}, code(data.unknown ? 'job_not_found' : 'note_not_found'))];
   }
 
+  // The section links (#sum, #tx, #spk) are anchors in one page: the current one is only marked. Moving the mark touches
+  // nothing else, so the page is not redrawn under a click.
+  function markTab(id) {
+    state.tab = id;
+    for (const link of parts.tabs.querySelectorAll('a')) {
+      if (link.getAttribute('href') === `#${id}`) link.setAttribute('aria-current', 'true');
+      else link.removeAttribute('aria-current');
+    }
+  }
+  const tabLink = (id, ko, en) => h('a', {href: `#${id}`, 'aria-current': state.tab === id ? 'true' : null, on: {click: () => markTab(id)}}, L(ko, en));
+
+  // /notes/<job>#t12 (a link from search) opens the transcript section on that line and marks it for a moment; #sum, #tx
+  // and #spk open their sections. Anything else in the address is ignored. Only exact ids are looked up (no selector is built
+  // from the address).
+  function openHash(flash) {
+    const hash = String(location.hash || '');
+    const line = /^#(t[1-9]\d*)$/.exec(hash);
+    const section = /^#(sum|tx|spk)$/.exec(hash);
+    if (line) {
+      if (transcript && transcript.showLine(line[1], {flash})) markTab('tx');   // an id the transcript does not have changes nothing
+    } else if (section) {
+      markTab(section[1]);
+    }
+  }
+
   function render() {
     const job = state.job;
     const title = data.title || (job && job.source_name) || jobId;
@@ -371,6 +460,8 @@ export async function mount({content, jobId}) {
     replace(parts.crumb, h('nav', {class: 'crumb', 'aria-label': L('위치', 'Breadcrumb')}, h('a', {href: '/notes'}, L('회의록', 'Notes')),
       h('span', null, '›'), h('span', null, title.length > 24 ? title.slice(0, 24) + '…' : title)));
     replace(parts.notices, state.notice,
+      state.fresh ? banner('info', 'i', [h('b', null, L('회의록을 새로 만들었어요.', 'The minutes were made again.')), ' ', L('새로 고치면 새 요약이 보여요.', 'Reload to see the new summary.')],
+        [btn({small: true, icon: 'refresh', label: L('새로 고침', 'Reload'), on: {click: () => location.reload()}})]) : null,
       data.found && data.note_state === 'missing' ? banner('warn', '!', [h('b', null, L('볼트에서 노트 파일을 찾지 못했어요.', 'Couldn\'t find the note file in your vault.')), ' ',
         L('엔진은 볼트 노트를 지우지 않아요. 아래는 엔진이 만든 초안이에요.', 'The engine never deletes vault notes. Below is the draft the engine made.'), ' ', code('note_not_found')]) : null,
       data.found && data.note_state === 'conflict' ? banner('warn', '!', [h('b', null, L('같은 작업의 노트가 둘 이상이에요.', 'More than one note belongs to this job.')), ' ',
@@ -381,30 +472,50 @@ export async function mount({content, jobId}) {
       return;
     }
     renderPlayer();
-    const target = job || {job_id: jobId};
-    replace(parts.main,
+    const refocus = document.activeElement === exporter.toggle;
+    replace(parts.head,
       noteHeader(),
       h('p', {class: 'promise'}, L('회의록은 초안이에요. 중요한 결정과 할 일은 근거를 확인해 주세요.', 'Minutes are drafts. Check the evidence before relying on decisions and tasks.')),
       h('div', {class: 'actions'},
         data.note_path ? btn({small: true, icon: 'external', href: 'obsidian://open?path=' + encodeURIComponent(data.note_path), label: L('Obsidian에서 열기', 'Open in Obsidian')}) : null,
-        btn({small: true, engine: true, label: L('요약만 다시', 'Re-summarize only'), on: {click: () => actions.run(target, 'resummarize')}}),
-        btn({small: true, engine: true, label: L('처음부터 다시', 'Redo from scratch'), on: {click: () => actions.run(target, 'from_transcribe')}}),
+        exporter.toggle,
+        btn({small: true, engine: true, label: L('요약만 다시', 'Re-summarize only'), on: {click: () => rerun('resummarize')}}),
+        btn({small: true, engine: true, label: L('처음부터 다시', 'Redo from scratch'), on: {click: () => rerun('from_transcribe')}}),
         job ? languageSelect(job, actions, {auto: true}) : null,
-        btn({small: true, kind: 'danger', engine: true, label: L('처리 데이터 삭제', 'Delete processing data'), on: {click: () => { state.confirm = true; render(); }}})),
-      state.confirm ? deleteConfirm() : null,
-      h('nav', {class: 'tabs', 'aria-label': L('회의록 구역', 'Sections')},
-        h('a', {href: '#sum', 'aria-current': 'true'}, L('요약', 'Summary')), h('a', {href: '#tx'}, L('대화록', 'Transcript'))),
-      summaryCard(), transcriptCard());
-    replace(parts.speakers, speakersCard());
+        btn({small: true, kind: 'danger', engine: true, label: L('처리 데이터 삭제', 'Delete processing data'), on: {click: () => { state.confirm = true; render(); }}})));
+    if (refocus) exporter.toggle.focus();
+    replace(parts.confirm, state.confirm ? deleteConfirm() : null);
+    replace(parts.tabs, h('nav', {class: 'tabs', 'aria-label': L('회의록 구역', 'Sections')}, tabLink('sum', '요약', 'Summary'), tabLink('tx', '대화록', 'Transcript'), tabLink('spk', '화자', 'Speakers')));
+    replace(parts.summary, summaryCard());
     replace(parts.records, recordsCard());
-    activeLine = -1;
-    highlight();
     syncEngineControls(content);
   }
 
-  onLang(render);
-  subscribe(() => syncEngineControls(content));
+  onLang(() => {
+    render();
+    if (!speakers) return;
+    speakers.render();
+    transcript.render();
+    exporter.render();
+  });
+  subscribe(() => {
+    syncEngineControls(content);
+    watchJob();
+  });
   render();
-  if (data.found) probeAudio();
+  if (data.found) {
+    applySpeed();
+    speakers.render();
+    probeAudio();
+    openHash(true);   // the lines are on the page from the first draw (the page data), so a link from search lands at once
+    // Names are known only when both lists are in: draw the transcript and the summary again with them, then make sure
+    // the linked line is still in view (the page may have moved under it) without marking it again.
+    Promise.all([speakers.load(), transcript.load()]).then(() => {
+      transcript.render();
+      render();
+      openHash(false);
+    });
+    if (typeof addEventListener === 'function') addEventListener('hashchange', () => openHash(true));
+  }
   await load();
 }

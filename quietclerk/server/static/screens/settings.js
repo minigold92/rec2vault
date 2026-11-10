@@ -5,6 +5,9 @@
 // restoring them, so that is shown as unavailable with the endpoint named.
 // The word list (contract §10.7) edits vocabulary.terms, vocabulary.replace and the `vocabulary` entry of
 // providers.consent through the same drafts, save bar and 400 display as every other key.
+// The summary layout (headings per meeting type and a preference), the short-recording memo and the daily-note path (contract §10.8 E-G)
+// are edited the same way; their rules and the headings editor are in settings-summary.js. The engine's default headings
+// (postprocess.TYPE_SECTIONS) are not served by any API, so that file carries a copy that the tests compare with the engine.
 import {h, icon, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {get, put, post} from '../lib/api.js';
@@ -13,6 +16,7 @@ import {providerLabel} from '../lib/jobs.js';
 import {problemBanner} from '../lib/cards.js';
 import {setTitle, syncEngineControls, langSwitch} from '../lib/shell.js';
 import {updateCheckControl, updateVersions} from '../lib/update.js';
+import {sectionsEditor, sectionsIssue, normalizeSections, instructionsIssue, dailyIssue, problemText as summaryProblem, serverReason, MEMO_RANGE, MAX_INSTRUCTIONS} from './settings-summary.js';
 
 const ENV = {root: 'QC_ROOT', inbox: 'QC_INBOX', output: 'QC_OUTPUT', since: 'QC_SINCE', min_duration_sec: 'QC_MIN_DURATION_SEC',
   stable_sec: 'QC_STABLE_SEC', 'language.mode': 'QC_LANGUAGE', 'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT'};
@@ -22,8 +26,15 @@ const APPLY = {
   clean: () => L('다음 정리부터 적용', 'Applies at next cleanup'),
   restart: () => L('엔진 다시 시작 후 적용', 'Applies after engine restart'),
   now: () => L('바로 적용', 'Applies now'),
+  sum: () => L('다음 요약부터 적용', 'Applies from the next summary'),
 };
 const FIELD_NAMES = {transcript: ['대화록', 'transcript'], source_name: ['파일 이름', 'file name'], project_list: ['프로젝트 목록', 'project list'], vocabulary: ['단어장', 'word list']};
+// Summary layout, memo and daily-note keys (contract §10.8 E-G): same drafts, save bar and 400 display as every other key.
+const SECTIONS = 'summary.sections';
+const INSTRUCTIONS = 'summary.instructions';
+const MEMO_ON = 'memo.enabled';
+const MEMO_MIN = 'memo.min_sec';
+const DAILY = 'daily_note.path';
 
 // ---- word list rules (contract §10.7): up to 200 entries of 1-40 characters. The engine counts characters (not UTF-16
 // units) and refuses every Unicode "other" character (control, zero-width, bidirectional, private use), while the save
@@ -169,11 +180,14 @@ export async function mount({content}) {
   const isLocked = (key) => state.server.environment_keys.includes(key) || key === 'root' || key === 'inbox';
   const changed = () => Object.keys(state.draft).filter((key) => !same(state.draft[key], effective(key)));
 
+  let memoNote = null;   // the sentence under the memo length: which recordings become memos; follows both lengths
+
   function setDraft(key, next) {
     if (same(next, effective(key))) delete state.draft[key];
     else state.draft[key] = next;
     delete state.errors[key];
     renderBar();
+    if (memoNote) paintMemoNote();
   }
 
   const show = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
@@ -506,6 +520,114 @@ export async function mount({content}) {
     renderConsent();
   }
 
+  // ---- summary headings and preference, memo, daily note (contract §10.8 E-G). Typed text is only ever put in the page as text.
+  let editor = null;   // the headings editor: built when the settings are loaded, then redrawn in place
+
+  function sectionsField() {
+    if (!editor) {
+      editor = sectionsEditor({get: () => { const v = value(SECTIONS); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; },
+        set: (next) => { setDraft(SECTIONS, next); dropError('f-sections'); }, locked: isLocked(SECTIONS), sync: syncEngineControls});
+    }
+    return field({id: 'f-sections', key: SECTIONS, label: L('유형별 제목', 'Headings by type'), help: L('핵심 요약은 고정 · 나머지는 1~12개, 40자까지', 'Key summary is fixed · 1–12 others, 40 characters each'),
+      apply: 'sum', locked: isLocked(SECTIONS), control: editor.el});
+  }
+
+  // 500 characters, one line: the engine refuses control characters and line breaks, so a break is turned into a space (and said) instead of dropped.
+  function instructionsField() {
+    const locked = isLocked(INSTRUCTIONS);
+    const note = h('span', {class: 'why', id: 'f-instr-note'});
+    const count = h('span', {class: 'small muted num', id: 'f-instr-n'});
+    const said = h('p', {class: 'err-text small', id: 'f-instr-m'});
+    const area = h('textarea', {class: 'input area', id: 'f-instr', rows: 4, value: String(value(INSTRUCTIONS) ?? ''), autocomplete: 'off', spellcheck: 'false', disabled: locked,
+      placeholder: L('예: 결정 사항을 먼저 쓰고, 숫자에는 단위를 붙여 주세요.', 'e.g. Put decisions first and keep units next to numbers.'),
+      'aria-describedby': 'f-instr-n f-instr-m', 'data-engine': locked ? null : '',
+      on: {keydown: (event) => { if (event.key === 'Enter' && !event.isComposing) event.preventDefault(); },
+        input: () => {
+          const flat = area.value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+          note.textContent = flat === area.value ? '' : L('줄바꿈은 공백으로 바꿨어요.', 'Line breaks were turned into spaces.');
+          if (flat !== area.value) area.value = flat;
+          setDraft(INSTRUCTIONS, area.value);
+          dropError('f-instr');
+          paint();
+        }}});
+    function paint() {
+      const issue = instructionsIssue(area.value);
+      count.textContent = `${Array.from(area.value.trim()).length} / ${MAX_INSTRUCTIONS}`;
+      said.textContent = issue ? summaryProblem(issue) : '';
+      if (issue || state.errors[INSTRUCTIONS]) area.setAttribute('aria-invalid', 'true');   // the engine's refusal of the last save keeps the red border until the text is edited
+      else area.removeAttribute('aria-invalid');
+    }
+    paint();
+    return field({id: 'f-instr', key: INSTRUCTIONS, label: L('요약 선호', 'Summary preferences'), help: L('500자까지 · 한 줄', 'Up to 500 characters · one line'),
+      apply: 'sum', locked, control: h('div', {class: 'stack tight'}, area, said, h('div', {class: 'row'}, count, note),
+        h('p', {class: 'small muted'}, L('요약에 바라는 점을 적어요. 규칙과 부딪치면 무시돼요. 근거를 다는 규칙과 안전 규칙은 바꿀 수 없어요.',
+          'Say what you want from the summary. It is ignored where it clashes with the rules; the evidence and safety rules can\'t be changed.')))});
+  }
+
+  function paintMemoNote() {
+    const min = value(MEMO_MIN), max = value('min_duration_sec');
+    let said = '';
+    if (value(MEMO_ON) && typeof min === 'number' && typeof max === 'number') {
+      said = min >= max
+        ? L(`메모 최소 길이(${min}초)가 위의 최소 길이(${max}초)와 같거나 커서, 메모가 될 녹음이 없어요.`, `The shortest memo (${min} s) is not below the minimum length above (${max} s), so no recording would become a memo.`)
+        : L(`${min}초 이상 ${max}초 미만 녹음을 메모로 남겨요.`, `Recordings from ${min} s up to ${max} s become memos.`);
+    }
+    memoNote.textContent = said;
+  }
+
+  // The switch and its length. The length is off (with its reason) while the switch is off.
+  function memoFields() {
+    const on = switchField(MEMO_ON, 'f-memo', L('짧은 녹음을 메모로', 'Short recordings as memos'),
+      L('최소 길이보다 짧은 녹음을 건너뛰지 않고 짧은 메모로 남겨요. 한 사람이 말한 메모로 보고, 요약은 핵심 요약과 할 일만 써요.',
+        'Keep recordings shorter than the minimum length as short memos instead of skipping them. A memo is taken as one speaker, and its summary has only the key summary and tasks.'), 'scan');
+    const min = numberField(MEMO_MIN, 'f-memo-min', L('메모로 남길 최소 길이', 'Shortest memo'),
+      L(`이보다 짧으면 메모로도 남기지 않고 건너뛰어요 (${MEMO_RANGE[0]}~${MEMO_RANGE[1]}초)`, `Anything shorter is still skipped (${MEMO_RANGE[0]}–${MEMO_RANGE[1]} seconds)`), 'scan', L('초', 'seconds'));
+    const box = on.querySelector('input');
+    const input = min.querySelector('input');
+    const why = h('span', {class: 'why'}, L('메모를 켜면 쓸 수 있어요', 'Available once memos are on'));
+    const gate = () => {
+      if (!isLocked(MEMO_MIN)) {
+        input.disabled = !box.checked;
+        if (box.checked) input.removeAttribute('aria-disabled');
+        else input.setAttribute('aria-disabled', 'true');
+      }
+      why.hidden = box.checked;
+    };
+    box.addEventListener('change', gate);
+    memoNote = h('p', {class: 'small ink', 'aria-live': 'polite'});
+    min.querySelector('.ctl').append(why, memoNote);
+    gate();
+    paintMemoNote();
+    return [on, min];
+  }
+
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+  function dailyField() {
+    const locked = isLocked(DAILY);
+    const said = h('p', {class: 'err-text small', id: 'f-daily-m'});
+    const example = h('p', {class: 'small ink', id: 'f-daily-eg', 'aria-live': 'polite'});
+    const input = h('input', {class: 'input wide', id: 'f-daily', value: String(value(DAILY) ?? ''), placeholder: 'Daily/{date}.md', autocomplete: 'off', spellcheck: 'false',
+      disabled: locked, 'aria-describedby': 'f-daily-m f-daily-eg', 'data-engine': locked ? null : '',
+      on: {input: (event) => { setDraft(DAILY, event.target.value); dropError('f-daily'); paint(); }}});
+    function paint() {
+      const text = input.value.trim();
+      const issue = dailyIssue(input.value);
+      said.textContent = issue ? summaryProblem(issue) : '';
+      if (issue || state.errors[DAILY]) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+      const path = text.split('{date}').join(today());
+      example.textContent = !text ? L('지금은 꺼져 있어요.', 'It\'s off now.') : issue ? '' : L(`오늘 녹음이라면 ${path} 에 링크를 더해요.`, `A recording made today adds its link to ${path}.`);
+    }
+    paint();
+    return field({id: 'f-daily', key: DAILY, label: L('데일리 노트에 연결', 'Link from the daily note'), help: L('비워 두면 꺼요', 'Leave empty to turn it off'), apply: 'rec', locked,
+      control: h('div', {class: 'stack tight'}, input, said, example,
+        h('p', {class: 'small muted'}, L('녹음한 날의 데일리 노트에 회의록 링크를 한 줄(‘- 10:00 [[노트 이름|제목]]’) 더해요. 그 노트의 ‘## 회의록’ 제목(영어 노트는 ‘## Meetings’) 아래에만 쓰고, 다른 줄은 바꾸지 않아요. 파일이 없으면 그 제목만 있는 파일을 만들어요.',
+          'Adds one line (‘- 10:00 [[note name|title]]’) to the daily note of the recording\'s day, under its ‘## Meetings’ heading (‘## 회의록’ for Korean notes). No other line is changed. A missing file is created with just that heading.')),
+        h('p', {class: 'small muted'}, L('{date}는 녹음한 날(YYYY-MM-DD)로 바뀌어요. 볼트 기준 경로(Daily/{date}.md)나 ~로 시작하는 전체 경로를 쓸 수 있고, 회의록 폴더가 속한 Obsidian 볼트 안이어야 해요.',
+          '{date} becomes the day of the recording (YYYY-MM-DD). Use a path from the vault root (Daily/{date}.md) or a full path starting with ~; it must be inside the Obsidian vault that holds the notes folder.')))});
+  }
+
   // ---- sections
   function section(id, title, ...body) {
     return h('section', {class: 'card', id, 'aria-labelledby': `${id}-h`}, h('div', {class: 'card-head'}, h('h2', {id: `${id}-h`}, title)), h('div', null, body));
@@ -520,11 +642,13 @@ export async function mount({content}) {
           h('span', {class: 'row gap6'}, btn({small: true, disabled: true, label: L('바꾸기', 'Change')}),
             h('span', {class: 'why'}, L('폴더 선택 창은 Mac 앱에서만 열려요', 'The folder picker opens only in the Mac app'))))}),
         segField('notes.output_language', 'f-ol', L('회의록 언어', 'Minutes language'), L('대화록 언어와 다르게 쓸 수 있어요', 'Can differ from the spoken language'), 'rec',
-          [['same', L('녹음과 같게', 'Same as recording')], ['ko', L('한국어', 'Korean')], ['en', L('영어', 'English')]])),
+          [['same', L('녹음과 같게', 'Same as recording')], ['ko', L('한국어', 'Korean')], ['en', L('영어', 'English')]]),
+        dailyField()),
       section('s-rec', L('처리할 녹음', 'Recordings to process'),
         textField('since', 'f-since', L('이 시각 이후 녹음만', 'Only recordings after'), L('그 전 녹음은 ‘기존 녹음’에서 골라요', 'Earlier ones are under ‘Older recordings’'), 'scan', 'mid'),
         numberField('min_duration_sec', 'f-min', L('최소 길이', 'Minimum length'), L('이보다 짧으면 건너뛰어요', 'Shorter recordings are skipped'), 'scan', L('초', 'seconds')),
-        numberField('stable_sec', 'f-stable', L('도착 확인 시간', 'Arrival settle time'), L('파일 크기가 이만큼 그대로면 다 왔다고 봐요', 'A file is complete once its size holds this long'), 'scan', L('초', 'seconds'))),
+        numberField('stable_sec', 'f-stable', L('도착 확인 시간', 'Arrival settle time'), L('파일 크기가 이만큼 그대로면 다 왔다고 봐요', 'A file is complete once its size holds this long'), 'scan', L('초', 'seconds')),
+        memoFields()),
       section('s-lang', L('언어', 'Language'),
         segField('language.mode', 'f-lm', L('녹음 언어', 'Recording language'), L('고정하면 언어 감지를 건너뛰어요', 'Pinning skips language detection'), 'rec',
           [['auto', L('자동 감지', 'Auto-detect')], ['ko', L('한국어', 'Korean')], ['en', L('영어', 'English')]]),
@@ -543,6 +667,13 @@ export async function mount({content}) {
           apply: 'rec', locked: isLocked(FIXES), control: fixesHost}),
         field({id: 'f-vc', key: 'providers.consent', label: L('단어장을 보낼 엔진', 'Engines that get the word list'), help: L('동의한 엔진에만 보내요', 'Only engines you allow'),
           apply: 'rec', control: consentHost})),
+      section('s-sum', L('요약 구성', 'Summary layout'),
+        h('div', {class: 'stack small ink'},
+          h('p', null, L('회의 유형마다 요약에 넣을 제목을 정해요. 핵심 요약은 늘 맨 앞에 있고 바꿀 수 없어요. 근거를 다는 규칙도 그대로예요.',
+            'Choose the headings of the summary for each type of meeting. The key summary always comes first and can\'t be changed, and neither can the rule to cite evidence.')),
+          h('p', {class: 'muted'}, L('다음 요약부터 적용돼요. 이미 만든 회의록에 적용하려면 그 회의록에서 ‘요약만 다시’를 눌러요.',
+            'Applies from the next summary. To apply it to minutes you\'ve already made, press ‘Re-summarize only’ on that note.'))),
+        sectionsField(), instructionsField()),
       section('providers', L('요약 엔진', 'Summary engines'),
         switchField('providers.local_only', 'f-lo', L('로컬 전용 모드', 'Local-only mode'),
           L('켜면 이 Mac 밖으로 글자를 보내지 않고, 외부로 넘어가는 대체도 막아요. 로컬로 확인된 엔진이 없으면 요약 단계에서 기다리게 돼요.', 'When on, no text leaves this Mac and external fallback is blocked. If no engine is verified local, jobs wait at summarising.'), 'rec'),
@@ -659,10 +790,21 @@ export async function mount({content}) {
     const body = {};
     for (const key of keys) {
       const v = state.draft[key];
-      if (['min_duration_sec', 'stable_sec', 'retention.wav_days', 'server.port'].includes(key) && typeof v !== 'number') {
+      if (['min_duration_sec', 'stable_sec', 'retention.wav_days', 'server.port', MEMO_MIN].includes(key) && typeof v !== 'number') {
         state.errors[key] = L('숫자로 적어 주세요.', 'Enter a whole number.');
+      } else if (key === MEMO_MIN && (!Number.isInteger(v) || v < MEMO_RANGE[0] || v > MEMO_RANGE[1])) {
+        state.errors[key] = L(`${MEMO_RANGE[0]}~${MEMO_RANGE[1]}초 사이로 적어 주세요.`, `Enter ${MEMO_RANGE[0]}–${MEMO_RANGE[1]} seconds.`);
       } else if (key === 'since' && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(String(v))) {
         state.errors[key] = L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00');
+      } else if (key === SECTIONS) {
+        // headings the engine would refuse are shown in their rows, never sent
+        const issue = sectionsIssue(v);
+        if (issue) state.errors[key] = [L('고쳐야 할 제목이 있어요. 빨간 줄을 고치거나 지워 주세요.', 'Some headings need fixing. Correct or remove the ones in red.'), issue.row < 0 ? summaryProblem(issue) : ''].join(' ').trim();
+        else body[key] = normalizeSections(v);
+      } else if (key === INSTRUCTIONS || key === DAILY) {
+        const issue = key === INSTRUCTIONS ? instructionsIssue(v) : dailyIssue(v);
+        if (issue) state.errors[key] = summaryProblem(issue);
+        else body[key] = String(v).trim();
       } else {
         body[key] = v;
       }
@@ -689,7 +831,7 @@ export async function mount({content}) {
       const field = error.body && error.body.field;
       if ((error.status === 400 || error.status === 409) && field) {
         state.errors[field] = error.status === 409 ? L('환경 변수로 정해져 있어 바꿀 수 없어요.', 'Fixed by an environment variable; it can\'t be changed.')
-          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : isVocabulary(field) ? serverWhy(String(error.body.error)) : String(error.body.error);
+          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : isVocabulary(field) ? serverWhy(String(error.body.error)) : serverReason(field, String(error.body.error));
         state.notice = banner('err', '!', [h('b', null, L('저장하지 못했어요.', 'Not saved.')), ' ',
           L('빨간 항목 1개를 고쳐 주세요. 나머지는 아직 바뀌지 않았어요.', 'Fix the 1 item in red. Nothing else has changed yet.'), ' ', code(`${error.status} {field: ${field}}`)]);
       } else {
@@ -709,12 +851,13 @@ export async function mount({content}) {
       h('div', {class: 'topbar'}, h('h1', null, L('설정', 'Settings'))),
       state.notice,
       h('nav', {class: 'row', 'aria-label': L('설정 구역', 'Settings sections')}, [
-        ['s-out', L('회의록', 'Notes')], ['s-rec', L('처리할 녹음', 'Recordings')], ['s-lang', L('언어', 'Language')], ['s-vocab', L('단어장', 'Word list')], ['providers', L('요약 엔진', 'Summary engines')],
+        ['s-out', L('회의록', 'Notes')], ['s-rec', L('처리할 녹음', 'Recordings')], ['s-lang', L('언어', 'Language')], ['s-vocab', L('단어장', 'Word list')], ['s-sum', L('요약 구성', 'Summary layout')], ['providers', L('요약 엔진', 'Summary engines')],
         ['retention', L('저장·삭제', 'Storage & deletion')], ['s-ui', L('화면', 'Screen')], ['s-upd', L('업데이트', 'Updates')], ['consent', L('녹음 동의', 'Recording consent')]]
         .map(([id, text]) => h('a', {class: 'chip line', href: `#${id}`}, text))),
       sections(), barHost);
     renderProviders();
     renderVocabulary();
+    editor.refresh({strict: !!state.errors[SECTIONS]});
     renderBar();
     syncEngineControls(content);
     if (keep && document.getElementById(keep)) document.getElementById(keep).focus();

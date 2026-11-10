@@ -58,10 +58,11 @@ TASK_HEADINGS = {'ko': '## 할 일', 'en': '## Tasks'}
 NOTES_HEADINGS = {'ko': '## 메모', 'en': '## Notes'}
 
 
-def note_name(recorded, title, fallback):
+def note_name(recorded, title, fallback, mtype=None):
     slug = re.sub(r'\s+', '_', (title or fallback).strip())
     slug = re.sub(r'[\\/:*?"<>|#^\[\]%]', '', slug)[:160]
-    return f'{recorded:%Y-%m-%d}_{slug}_{recorded:%H%M}.md'
+    prefix = '메모_' if mtype == 'memo' else ''
+    return f'{recorded:%Y-%m-%d}_{prefix}{slug}_{recorded:%H%M}.md'
 
 
 def frontmatter(props):
@@ -175,6 +176,54 @@ def split_tasks(summary):
     return tasks, '\n'.join(rest)
 
 
+PARTICLE = r'((?:으로|은|는|이|가|을|를|과|와|로)(?![가-힣]))?'
+_PAIRS = {'은': ('은', '는'), '는': ('은', '는'), '이': ('이', '가'), '가': ('이', '가'), '을': ('을', '를'),
+          '를': ('을', '를'), '과': ('과', '와'), '와': ('과', '와')}
+
+
+def particle_for(name, particle):
+    """Korean particle agreeing with the name's last syllable ("S2는" -> "오지안은")."""
+    if not particle:
+        return ''
+    last = name[-1:]
+    if not '가' <= last <= '힣':
+        return particle  # Latin names: keep what the engine wrote
+    final = (ord(last) - 0xAC00) % 28
+    if particle in ('으로', '로'):
+        return '로' if final in (0, 8) else '으로'  # no final consonant or ㄹ
+    return _PAIRS[particle][0 if final else 1]
+
+
+def replace_speaker_names(summary, speakers):
+    """Replace whole labels in prose, never inside authored links or their targets."""
+    names = {label: re.sub(r'([\\`*_!^|[\]#])', r'\\\1', value['name'])
+             for label, value in speakers.items() if value.get('confirmed') and value.get('name')}
+    if not names:
+        return summary
+    # Korean particles follow labels directly ("S2는"): only ASCII letters/digits extend a label.
+    tokens = re.compile(r'(?<!\w)(' + '|'.join(re.escape(label) for label in sorted(names, key=len, reverse=True))
+                        + r')(?![A-Za-z0-9_])' + PARTICLE)
+    def named(match):
+        return names[match[1]] + particle_for(names[match[1]], match[2])
+    protected = re.compile(r'(?m)^\s*\[[^\]]+\]:[^\n]*|\[\[[^\n]*?\]\]|!?\[(?:\\.|[^\]\\\n])*\](?:\(|\[[^\]\n]*\])|https?://[^\s<>]+|<[^>\n]*>')
+    pieces, start = [], 0
+    while match := protected.search(summary, start):
+        end = match.end()
+        if match[0].endswith('('):
+            depth = 1
+            while end < len(summary) and depth and summary[end] != '\n':
+                char = summary[end]
+                if char == '\\':
+                    end += min(2, len(summary) - end)
+                    continue
+                depth += (char == '(') - (char == ')')
+                end += 1
+        pieces.extend((tokens.sub(named, summary[start:match.start()]), summary[match.start():end]))
+        start = end
+    pieces.append(tokens.sub(named, summary[start:]))
+    return ''.join(pieces)
+
+
 def components(job, recorded, turns, texts, meta, summary, notes, engines, processed_at,
                language='ko', language_detected=None, output_language=None, review_reasons=(),
                dropped=(), speaker_review=()):
@@ -194,6 +243,7 @@ def components(job, recorded, turns, texts, meta, summary, notes, engines, proce
     if '## 확인 필요' in summary or '## Review needed' in summary:
         reasons.append('summary_review')
     reasons = list(dict.fromkeys(reasons))
+    summary = replace_speaker_names(summary, meta.get('speakers', {}))
     tasks, summary = split_tasks(safe_summary(summary))
     messages = {
         'asr_dropped': ('ASR omitted suspected hallucination/repetition; check the recording.',
@@ -222,8 +272,10 @@ def components(job, recorded, turns, texts, meta, summary, notes, engines, proce
         'language': language, 'language_detected': language_detected,
         'type': meta.get('type', 'other'), 'division': meta.get('division', 'work'),
         'topics': meta.get('topics', []), 'project': ['unassigned'], 'project_suggest': meta.get('project_suggest'),
-        'attendees': [], 'speakers': [f'{label}: ' + ' · '.join(str(v) for v in (s.get('name'), s.get('role')) if v)
-                                     for label, s in sorted(speakers.items())],
+        'attendees': [], 'speakers': [f'{label}: ' + ' · '.join(str(v) for v in
+                                     ((s.get('name') if s.get('confirmed') else
+                                       (s.get('name') + (' (estimated)' if en else ' (추정)')) if s.get('name') else None),
+                                      s.get('role')) if v) for label, s in sorted(speakers.items())],
         'speaker_count': speaker_count(turns, texts), 'status': 'draft', 'needs_review': bool(reasons),
         'review_reasons': reasons, 'source_file': job['source_name'], 'source_sha256': job['sha256'], 'job_id': job['job_id'],
         'pipeline_asr': engines.get('transcribe', []), 'pipeline_llm': engines.get('postprocess', []),
@@ -234,6 +286,8 @@ def components(job, recorded, turns, texts, meta, summary, notes, engines, proce
     rows = []
     for label, speaker in sorted(speakers.items()):
         role, name = safe_text(speaker.get('role') or ''), safe_text(speaker.get('name') or '')
+        if name and not speaker.get('confirmed'):
+            name += ' (estimated)' if en else ' (추정)'
         ident = speaker.get('name_id')
         if name and ident in starts:
             name += f' [[#^{ident}\\|{stamp(starts[ident])}]]'  # a bare | would split the table cell
@@ -244,7 +298,10 @@ def components(job, recorded, turns, texts, meta, summary, notes, engines, proce
     generated += [summary, '', '## Full transcript' if en else '## 전체 대화록', '',
                   '> AI transcript draft. Speaker labels are not real names.' if en else '> AI 전사 초안. 화자 번호는 실제 이름이 아닙니다.', '']
     for i, (turn, text) in enumerate(zip(turns, texts)):
-        generated += [f'**[{stamp(turn["start"])}] {safe_text(turn["speaker"])}**: {safe_text(text)} ^{line_id(i)}', '']
+        speaker = speakers.get(turn['speaker'], {})
+        label = (f'{speaker["name"]} ({turn["speaker"]})'
+                 if speaker.get('confirmed') and speaker.get('name') else turn['speaker'])
+        generated += [f'**[{stamp(turn["start"])}] {safe_text(label)}**: {safe_text(text)} ^{line_id(i)}', '']
     return props, '\n'.join(generated).rstrip(), tasks
 
 

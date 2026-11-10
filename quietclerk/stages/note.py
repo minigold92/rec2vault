@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .. import artifacts, notes, providers, render, store, syncthing
+from .. import artifacts, notes, overrides, providers, render, store, syncthing
 from ..notes.migration import preview as legacy_preview
 from ..executor import Blocked, Stage, StageFailure
 from .text import output_language, processing_language
@@ -42,6 +42,7 @@ def _quality_metadata(ctx):
 def _publish(ctx, out):
     turns, corrected = ctx.load('turns'), ctx.load('correct')
     classification, summary = ctx.load('classify'), ctx.load('summarize')
+    turns, effective_texts, effective_meta, dropped_overrides = overrides.stage_view(ctx, classification['meta'])
     records = store.provenance_rows(ctx.con, ctx.run_id)
     engines = {'transcribe': sorted({model for r in records if r['stage'] in ('transcribe', 'second_pass') and r['model']
                                      for model in _model_ids(r['model'])}),
@@ -53,9 +54,9 @@ def _publish(ctx, out):
     recorded = datetime.strptime(ctx.job['recorded_at'], '%Y%m%d-%H%M%S')
     dropped, speaker_review = _quality_metadata(ctx)
     props, generated, tasks = render.components(
-        ctx.job, recorded, turns, corrected['texts'], classification['meta'], summary['text'], corrected['notes'],
+        ctx.job, recorded, turns, effective_texts, effective_meta, summary['text'], corrected['notes'],
         engines, datetime.now(), processing_language(ctx), detected, output_language(ctx),
-        review_reasons=summary.get('review_reasons', []), dropped=dropped, speaker_review=speaker_review)
+        review_reasons=summary.get('review_reasons', []) + dropped_overrides, dropped=dropped, speaker_review=speaker_review)
     body, _ = notes.new_body(render.header(props, output_language(ctx)), generated, tasks, output_language(ctx))
     draft = ctx.work / 'note.md'
     render.write_atomic(draft, render.frontmatter(props) + body.decode())

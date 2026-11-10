@@ -61,6 +61,13 @@ does the same job with hardware you probably own:
   a date.
 - **Your edits survive.** Change the title, tick tasks or write notes in Obsidian; re-running the
   summary rewrites only the engine's section.
+- **Name the speakers, fix the transcript.** Hear a sample of each voice, confirm a name once and it
+  replaces "S2" in the table, the transcript and the summary. Merge two labels that are one person.
+  Fix a misheard line in place (Enter saves, Esc cancels); citations keep pointing at it.
+- **Find and share.** Search every meeting at once (spacing does not matter in Korean), jump to the
+  line, and export a meeting as Word, SRT, VTT, text or Markdown.
+- **Make it yours.** Choose the sections each meeting type gets, add a short preference, turn short
+  recordings into voice memos, and link each meeting from your daily note.
 - **Korean and English.** The language is detected per recording; notes come out in the meeting's
   language (or one you pin).
 - **You decide what leaves the Mac.** Pick which engines may receive text and which fields
@@ -251,6 +258,10 @@ apply from the next recording.
 | `updates.check` | `true` | Check GitHub for a new version once a day |
 | `vocabulary.terms` | — | Names and terms to listen for (up to 200); also given to the correction engine if you allow `vocabulary` |
 | `vocabulary.replace` | — | Exact fixes applied locally after transcription, e.g. `{from = "책 마루", to = "책마루"}` |
+| `summary.sections` | — | Section headings per meeting type, e.g. `{meeting = ["Decisions", "Tasks", "Risks"]}`; the key summary and citations are fixed |
+| `summary.instructions` | — | A short preference for summaries (up to 500 characters) |
+| `memo.enabled` | `false` | Process recordings shorter than `min_duration_sec` (but at least `memo.min_sec`, default 10 s) as voice memos |
+| `daily_note.path` | — | Daily note to link each meeting from, e.g. `~/Vault/Daily/{date}.md` (must be in the same vault) |
 
 Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY` and
 `QC_PORT` override the file.

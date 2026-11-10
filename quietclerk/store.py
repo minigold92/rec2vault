@@ -100,6 +100,9 @@ def connect(path):
         con.executescript('BEGIN IMMEDIATE;\n' + SCHEMA +
                           "\nINSERT INTO meta VALUES('schema_version','2');\nCOMMIT;")
     _migrate_vault_state(con, path.parent)
+    from . import overrides, search
+    overrides.ensure_schema(con)
+    search.ensure_schema(con)
     return con
 
 
@@ -558,6 +561,10 @@ def _commit_publication(con, publication, pending):
     now = time.time()
     job_id, run_id = publication['job_id'], publication['run_id']
     row = job(con, job_id)
+    if 'overrides' in pending:
+        from .overrides import commit_overrides
+        if commit_overrides(con, publication, pending):
+            return
     for field, record in pending['fields'].items():
         con.execute("""INSERT INTO note_fields VALUES(?,?,?,?) ON CONFLICT(job_id,field)
                        DO UPDATE SET owner=excluded.owner,last_generated=excluded.last_generated""",

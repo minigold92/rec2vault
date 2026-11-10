@@ -9,6 +9,7 @@ import {banner, btn, chip, code} from './ui.js';
 import {localTime} from './fmt.js';
 import {isBlocked} from './jobs.js';
 import {mountUpdateBand, restarting, subscribeUpdate} from './update.js';
+import {installSearch, searchTrigger} from './search.js';
 
 const NAV = [
   ['home', '/home', 'home', '홈', 'Home'],
@@ -165,17 +166,18 @@ export function mountShell(screen, {wizardStep} = {}) {
     } else {
       slots.side.setAttribute('aria-label', L('주 메뉴', 'Main menu'));
       slots.tab.setAttribute('aria-label', L('주 메뉴', 'Main menu'));
-      replace(slots.side, brand(true), h('nav', {class: 'nav'}, navLinks(current, true)),
+      replace(slots.side, brand(true), searchTrigger(false), h('nav', {class: 'nav'}, navLinks(current, true)),
         h('div', {class: 'side-foot'}, engineBox(), langSwitch()));
-      replace(slots.mobile, brand(false),
-        live.failed ? (restarting() ? chip('run', '●', L('업데이트 중', 'Updating')) : chip('err', '!', L('엔진 끊김', 'Offline')))
-          : live.snapshot && live.snapshot.paused ? chip('warn', '‖', L('일시정지', 'Paused')) : null,
-        langSwitch());
+      const state = live.failed ? (restarting() ? chip('run', '●', L('업데이트 중', 'Updating')) : chip('err', '!', L('엔진 끊김', 'Offline')))
+        : live.snapshot && live.snapshot.paused ? chip('warn', '‖', L('일시정지', 'Paused')) : null;
+      slots.mobile.setAttribute('class', 'mobile-top' + (state ? ' has-chip' : ''));   // a narrow bar with a status chip shows only the logo, so the search button has room
+      replace(slots.mobile, brand(false), state, searchTrigger(true), langSwitch());
       replace(slots.tab, navLinks(current, false));
     }
     replace(alertHost, topNotices());
     syncEngineControls(root);
   };
+  installSearch(syncEngineControls);   // `/` and ⌘K open the meeting search on every screen
   chrome();
   onLang(chrome);
   subscribe(async () => {

@@ -76,6 +76,9 @@ def finish_delete_local(con, job_id):
         con.execute('DELETE FROM runs WHERE job_id=?', (job_id,))
         con.execute('DELETE FROM note_fields WHERE job_id=?', (job_id,))
         con.execute('DELETE FROM note_tasks WHERE job_id=?', (job_id,))
+        con.execute('DELETE FROM speaker_overrides WHERE job_id=?', (job_id,))
+        con.execute('DELETE FROM transcript_edits WHERE job_id=?', (job_id,))
+        con.execute('DELETE FROM search WHERE job_id=?', (job_id,))
         con.execute("UPDATE jobs SET status='skipped',skip_reason='user_excluded',exclude_requested=0,"
                     "source_name='',archive_path=NULL,duration_sec=NULL,stage=NULL,"
                     "language_override=NULL,claimed_by=NULL,claimed_at=NULL,active_run_id=NULL,current_run_id=NULL,"
