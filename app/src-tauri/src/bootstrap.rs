@@ -66,6 +66,27 @@ pub fn allowed_bundled_navigation(candidate: &Url) -> bool {
         && candidate.password().is_none()
 }
 
+pub fn allowed_installation_caller(label: &str, origin: &Url) -> bool {
+    label.starts_with("main-") && allowed_bundled_navigation(origin)
+}
+
+#[test]
+fn installation_ipc_rejects_remote_and_other_windows() {
+    for origin in [
+        "http://127.0.0.1:8765/",
+        "https://example.test/",
+        "tauri://localhost/other.html",
+    ] {
+        assert!(!allowed_installation_caller(
+            "main-1",
+            &Url::parse(origin).unwrap()
+        ));
+    }
+    let bundled = Url::parse("tauri://localhost/").unwrap();
+    assert!(allowed_installation_caller("main-1", &bundled));
+    assert!(!allowed_installation_caller("engine", &bundled));
+}
+
 #[test]
 fn bundled_index_uses_root_url() {
     for target in [

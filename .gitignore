@@ -8,3 +8,6 @@ __pycache__/
 !docs/examples/*/*.m4a
 app/src-tauri/target/
 node_modules/
+app/.build-cache/
+app/src-tauri/engine/
+app/src-tauri/binaries/

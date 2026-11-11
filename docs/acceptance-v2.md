@@ -117,3 +117,24 @@ S1 최종 회귀(2026-11-11): `CONTRIBUTING.md`의 전체 Python 명령 **950 �
   `ENOENT`를 시험으로 발견하여 배타 생성 후 기존 잠금을 여는 방식으로 수정했다.
   전체 시험 1회 및 공용 파일 통합 검증은 메인 세션에서 한다.
 
+
+## A1 앱 첫 실행·엔진 맞추기 (2026-11-11, 앱 0.0.3 / 엔진 0.1.1)
+
+| 항목 | 수준·실행 증거 |
+|---|---|
+| 첫 실행 안내 | **실제 앱 화면**: `~/Applications/QuietClerk-A1.app`에서 용량·백그라운드 실행 동의·설치 버튼 표시. `screencapture` 창 캡처 `/tmp/quietclerk-a1-consent.png`. 클릭·키 입력 자동화 없음 |
+| 설치·서비스·인증 | **실제 기본 경로 + 공유 Rust 진입점**: `examples/first_run_probe.rs`가 버튼과 같은 `perform_install` 호출. 엔진/서비스 없는 기본 경로에 0.1.1 첫 설치 8.05초, 실제 launchd 등록·인증 성공. 기존 모델/uv 캐시가 있으므로 콜드 다운로드 시간 아님 |
+| 마법사 열기 | **실제 앱 화면**: 설치 후 앱 창에서 `/setup/1`, 칩·메모리·디스크·ffmpeg·uv 다섯 검사 성공. `/tmp/quietclerk-a1-wizard-final.png`. 설치 동의 클릭 연결 자체는 미확인 |
+| 앱 종료 | **실제 경로**: 시험 앱 SIGTERM 뒤 설치된 Python의 인증 status가 `engine=ready`; 이전 설치에서는 종료 전후 launchd PID 동일도 확인 |
+| 앱 소유 엔진 update | **실제 경로 + 공유 Rust 진입점**: 엔진 0.1.0을 설치한 뒤 0.1.1을 담은 두 번째 로컬 번들로 교체, 기존 update 함수로 10.44초에 전환·인증 성공. 현재 interpreter의 패키지 0.1.1, 보존한 직전 interpreter의 0.1.0을 각각 실행해 확인. 작업 없는 상태의 실측이며 처리 중 대기는 자동 시험 |
+| 모델 중복 받기 | **실제 완료 캐시 재사용**: HF blob 30개·5,556,951,429바이트의 크기·mtime이 첫 설치/업데이트 후 동일. 모델별 시작·완료 출력 확인. 다운로드 도중 단절/부분 이어받기는 가짜 snapshot 자동 시험이며 실제 빈 캐시 네트워크 단절은 미확인 |
+| 패키징·서명 | **실제 빌드/검사**: Tauri가 uv·ffmpeg·ffprobe를 `Contents/MacOS`에서 각각 ad-hoc 서명. `codesign --verify --deep --strict` 성공, FFmpeg `-L`은 LGPL 2.1+, `otool -L`은 시스템 라이브러리/프레임워크만. 시험 앱 교체 때 파일 병합으로 남은 옛 wheel은 깨끗한 번들 교체로 제거 |
+| 최소 FFmpeg 보안 경로 | **자동 시험 52개 통과 + 실제 공개 가상 음성**: 번들 도구를 명시한 기존 intake/intake_security/audio 시험. 한국어 데모 AAC 157.289083초와 영어 데모 89.974646초를 16kHz/mono PCM으로 변환. 실제 사용자 녹음·모델 전사 품질 시험 아님 |
+| 비정상 입력 | **가정 자동 시험**: 네트워크/디스크/플랫폼, 손상 wheel·목록·manifest, CLI 공존/다른 버전, 작업 대기·rollback, 파일 잠금·심볼릭 링크, 원격 IPC 차단. SIGKILL 복구는 별도 프로세스와 임시 HOME에서 실행 |
+| 언어·조작 경계 | **실제 한국어 안내 + 영어 엔진 마법사**, 두 언어 문자열은 코드에 유지. 버튼 클릭, 실제 새 사용자 계정·재로그인/재부팅, Homebrew 자체가 없는 Mac의 전체 경로, 빈 HF 캐시의 다운로드 시간은 미확인 |
+
+- 모델을 설치 단계에서 받는 이유: 기존 마법사 2단계에는 다운로드 API가 없어 앱 설치를 건너뛰면 터미널이 다시 필요하다. 현재 마법사 2단계의 CLI 안내는 그대로지만 앱 사용자는 이미 모델을 받았으므로 다시 실행할 필요 없다.
+- 실제 경로에서 발견한 macOS 타깃 기본값(uv는 13), 부트스트랩의 PyYAML 부재, launchd PATH에서 sysctl 부재를 각각 고정 14 타깃·동일 잠금의 bootstrap 부분 목록·절대 sysctl 경로로 해결했다.
+- 정리: 설치된 Python의 S1 unregister로 실제 서비스/LaunchAgents plist 해제 후 시험 root/support·관리 CLI 링크 제거, 시험 앱은 `lsregister -u` 후 삭제, `target/*/release/bundle` 삭제. 이 경로들의 부재와 모델 blob 30개의 크기·mtime 불변을 확인했다. HF 모델 캐시는 보존했고 `/Applications/QuietClerk.app`은 건드리지 않았다. BTM 비활성 이력은 기존 S1과 같이 남을 수 있다.
+- 사용자 확인: 릴리스 후 첫 실행 화면에서 ‘동의하고 엔진 설치’를 직접 눌러 진행·마법사 연결을 확인하고, 다음 로그인 때 앱을 열기 전 엔진이 실행 중인지 확인한다.
+- 최종 게이트(각 1회): Python 전체 **982 통과**(Starlette/httpx deprecation 경고 1개), `cargo test` **14 통과**, `cargo clippy -- -D warnings` **성공**. Cargo/npm/Tauri/CHANGELOG의 0.0.3 일치 검사 성공. Rust 제품 코드 **1,053줄**(시험/실측 예제 제외, build.rs 포함)로 1,500줄 이하다. GitHub Actions 자체 실행·게시/업데이터 배포는 하지 않았다.

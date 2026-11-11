@@ -58,8 +58,15 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg \
 
 The app and DMG are under `app/src-tauri/target/aarch64-apple-darwin/release/bundle/`.
 Rust unit tests use temporary bootstrap files and never touch the real engine data.
-The normal shell reads the existing engine's private bootstrap file; it does not implicitly install or start it.
-The S1 library exposes explicit service functions that call the Python installer (`contracts-app.md` §6).
+The shell offers first-run engine/model installation and opens the authenticated engine.
+`scripts/prepare_app.py` is the only local/CI resource preparation path (also a Tauri build/dev hook).
+Review dependency pins in `app/engine-requirements.txt`, build pins in `app/build-requirements.txt`,
+and tool versions, source SHA-256 and minimal LGPL configure flags in `app/build-inputs.json`.
+Regenerate engine pins with `MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile pyproject.toml --python-platform aarch64-apple-darwin --python-version 3.12 --generate-hashes --only-binary :all: --no-annotate --no-header --output-file app/engine-requirements.txt`.
+Rust unit tests require prepared bundle inputs (`python3 scripts/prepare_app.py` from the repo root).
+The S1 library functions still delegate service changes to the Python installer (`contracts-app.md` §6).
+`examples/first_run_probe.rs` invokes the exact Rust first-run install function with explicit consent;
+it is not linked into the app and accepts test bundles only under `~/Applications`.
 The opt-in `scripts/probe_login_service.py` exercises real launchd and cleans its temporary app/service;
 it refuses an existing local engine and is never part of pytest. Build its Rust entrypoint with
 `cargo build --manifest-path app/src-tauri/Cargo.toml --release --target aarch64-apple-darwin --example login_service_probe`.

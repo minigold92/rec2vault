@@ -331,7 +331,7 @@ def test_front_end_has_no_markup_sinks(api):
     css = (STATIC / 'qc.css').read_text()
     assert '@import' not in css and not re.search(r'url\(\s*[\'"]?(?:https?:|//|data:)', css)
     bootstrap = (Path(__file__).parents[1] / 'quietclerk/server/bootstrap.js').read_text()
-    assert bootstrap.index("fetch('/api/session'") < bootstrap.index("location.replace('/home')")
+    assert bootstrap.index("fetch('/api/session'") < bootstrap.index("location.replace(")
 
 
 # ---- note migration API

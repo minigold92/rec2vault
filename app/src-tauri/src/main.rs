@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use quietclerk_app::bootstrap;
+mod first_run;
 mod update_policy;
 
 use std::{
@@ -19,6 +20,8 @@ struct Shell {
     korean: bool,
     updating: AtomicBool,
     window_id: AtomicU64,
+    engine_status: MenuItem<tauri::Wry>,
+    install_item: MenuItem<tauri::Wry>,
 }
 
 fn l<'a>(korean: bool, ko: &'a str, en: &'a str) -> &'a str {
@@ -46,21 +49,37 @@ fn open_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     // Destroyed event remove the replacement from Tauri's window registry.
     let previous_id = app.state::<Shell>().window_id.load(Ordering::SeqCst);
     let next_id = previous_id + 1;
-    let bootstrap = app.path().home_dir().ok().and_then(|home| {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .ok()?
-            .as_secs_f64();
-        bootstrap::read_bootstrap(
-            &home.join("Library/Application Support/QuietClerk/bootstrap.json"),
-            now,
-            unsafe { libc::getuid() },
-        )
-        .ok()
-    });
+    let bootstrap = app
+        .state::<first_run::FirstRun>()
+        .ready
+        .load(Ordering::SeqCst)
+        .then(|| {
+            app.path().home_dir().ok().and_then(|home| {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .ok()?
+                    .as_secs_f64();
+                bootstrap::read_bootstrap(
+                    &home.join("Library/Application Support/QuietClerk/bootstrap.json"),
+                    now,
+                    unsafe { libc::getuid() },
+                )
+                .ok()
+            })
+        })
+        .flatten();
     let (url, port) = match bootstrap {
         Some(data) => match bootstrap::engine_url(&data) {
-            Ok(url) => (WebviewUrl::External(url), Some(data.port)),
+            Ok(mut url) => {
+                if app
+                    .state::<first_run::FirstRun>()
+                    .setup
+                    .load(Ordering::SeqCst)
+                {
+                    url.set_fragment(Some(&format!("bootstrap={}&next=setup", data.token)));
+                }
+                (WebviewUrl::External(url), Some(data.port))
+            }
             Err(_) => (WebviewUrl::App("index.html".into()), None),
         },
         None => (WebviewUrl::App("index.html".into()), None),
@@ -73,6 +92,20 @@ fn open_window(app: &tauri::AppHandle) -> tauri::Result<()> {
             None => bootstrap::allowed_bundled_navigation(url),
         })
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_page_load(|window, payload| {
+            if payload.url().path() == "/setup/1" {
+                window
+                    .app_handle()
+                    .state::<first_run::FirstRun>()
+                    .setup
+                    .store(false, Ordering::SeqCst);
+                if let Ok(home) = window.app_handle().path().home_dir() {
+                    let _ = std::fs::remove_file(
+                        home.join("Library/Application Support/QuietClerk/app-open-setup"),
+                    );
+                }
+            }
+        })
         .build()?;
     window.show()?;
     window.set_focus()?;
@@ -163,15 +196,14 @@ fn check_updates(app: &tauri::AppHandle, manual: bool) {
 
 fn main() {
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            first_run::installation_status,
+            first_run::install_engine
+        ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let ko = bootstrap::is_korean(&sys_locale::get_locale().unwrap_or_default());
-            app.manage(Shell {
-                korean: ko,
-                updating: AtomicBool::new(false),
-                window_id: AtomicU64::new(0),
-            });
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let open = MenuItem::with_id(
                 app,
@@ -187,8 +219,31 @@ fn main() {
                 true,
                 None::<&str>,
             )?;
+            let engine_status = MenuItem::with_id(
+                app,
+                "engine-status",
+                l(ko, "엔진 확인 중", "Checking engine"),
+                false,
+                None::<&str>,
+            )?;
+            let install_item = MenuItem::with_id(
+                app,
+                "install",
+                l(ko, "엔진 설치", "Install engine"),
+                false,
+                None::<&str>,
+            )?;
+            app.manage(Shell {
+                korean: ko,
+                updating: AtomicBool::new(false),
+                window_id: AtomicU64::new(0),
+                engine_status: engine_status.clone(),
+                install_item: install_item.clone(),
+            });
+            app.manage(first_run::FirstRun::default());
             let quit = MenuItem::with_id(app, "quit", l(ko, "종료", "Quit"), true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &update, &quit])?;
+            let menu =
+                Menu::with_items(app, &[&engine_status, &install_item, &open, &update, &quit])?;
             TrayIconBuilder::new()
                 .icon(tauri::image::Image::from_bytes(include_bytes!(
                     "../icons/tray.png"
@@ -201,19 +256,37 @@ fn main() {
                         if let Err(error) = open_window(app) {
                             show_error(app, error);
                         }
+                        first_run::start(app, false);
                     }
                     "update" => check_updates(app, true),
+                    "install" => {
+                        if let Err(error) = open_window(app) {
+                            show_error(app, error);
+                        }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
                 .build(app)?;
             open_window(app.handle())?;
+            first_run::start(app.handle(), false);
             check_updates(app.handle(), false);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("QuietClerk could not start")
-        .run(|_, event| {
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                let pid = app
+                    .state::<first_run::FirstRun>()
+                    .child
+                    .load(Ordering::SeqCst);
+                if pid > 0 {
+                    unsafe {
+                        libc::killpg(pid, libc::SIGTERM);
+                    }
+                }
+            }
             if let tauri::RunEvent::ExitRequested {
                 code: None, api, ..
             } = event

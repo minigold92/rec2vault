@@ -195,9 +195,19 @@ rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
 <details>
 <summary><b>Menu bar app (0.0.x, optional)</b></summary>
 
-The [Releases](https://github.com/minigold92/rec2vault/releases) page has a small menu bar app that
-opens the running engine's screens and updates itself. It does not install the engine yet; use the
-commands above first.
+The [Releases](https://github.com/minigold92/rec2vault/releases) page has a menu bar app that
+**installs the engine on first open**, without Terminal or Homebrew. Choose **Agree and install engine**:
+it checks Apple Silicon, macOS 14+, an internet connection and 8GB free (engine ~2GB + models ~6GB),
+shows installation stages/model completions and elapsed time, then opens the setup wizard.
+The engine starts at login and keeps running after you quit the app. An existing CLI installation
+is reused, not replaced. App-owned engines follow the bundled engine version/dependency lock using
+the rollback updater; failed downloads can be retried without clearing the model cache.
+
+The bundle includes hash-pinned uv, the engine wheel and dependency lock, and a minimal LGPL-only
+FFmpeg/ffprobe 7.1.2 built from [official source](https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz)
+(SHA-256 `089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304`).
+The complete LGPL license and exact configure arguments ship in Resources (`engine/COPYING.LGPLv2.1`,
+`engine/build-inputs.json`); reviewable build inputs are in [`app/build-inputs.json`](app/build-inputs.json).
 
 0.0.x builds are not signed by an Apple developer account, so macOS blocks the first open:
 

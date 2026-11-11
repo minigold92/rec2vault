@@ -80,6 +80,8 @@ def main(argv=None):
     update.add_argument('--root', type=Path)
     update.add_argument('--source', type=Path, help='source checkout or retained QuietClerk wheel')
     update.add_argument('--dry-run', action='store_true')
+    update.add_argument('--app-manifest', type=Path, help=argparse.SUPPRESS)
+    update.add_argument('--app-tools', type=Path, help=argparse.SUPPRESS)
     for name in ('install', 'upgrade', 'doctor'):
         command = sub.add_parser(name)
         command.add_argument('--root', type=Path)
@@ -91,21 +93,37 @@ def main(argv=None):
             command.add_argument('--agents', type=Path)
             command.add_argument('--source', type=Path,
                                  help='source checkout or retained QuietClerk wheel (required for wheel installs)')
+            command.add_argument('--app-manifest', type=Path, help=argparse.SUPPRESS)
+            command.add_argument('--app-tools', type=Path, help=argparse.SUPPRESS)
     args = None
     try:
         args = parser.parse_args(argv)
         if args.command in ('install', 'upgrade', 'update', 'doctor'):
             from . import install
+            adapter = None
+            if getattr(args, 'app_manifest', None) or getattr(args, 'app_tools', None):
+                if not args.app_manifest or not args.app_tools or not args.source:
+                    raise ValueError('app manifest, tools and source must be supplied together')
+                if args.command == 'update':
+                    state = install.login_service('status', support=args.support)
+                    if state['manager'] != 'app':
+                        raise ValueError('only app-owned engines accept app packaging options')
+                elif args.command != 'install' or not args.app_install:
+                    raise ValueError('app packaging options require install --app-install')
+                from .app_install import AppAdapter
+                adapter = AppAdapter(args.app_manifest.parent, args.app_tools, args.source,
+                                     download_models=args.command != 'update')
             if args.command == 'doctor':
                 print(install.doctor(root=args.root, legacy_labels=args.legacy_label))
             elif args.command == 'update':
                 print(install.update(root=args.root, source=args.source, dry_run=args.dry_run,
-                                     support=args.support, settings=args.settings))
+                                     support=args.support, settings=args.settings, **({'adapter': adapter} if adapter else {})))
             else:
                 print(install.run(upgrading=args.command == 'upgrade', root=args.root,
                                   dry_run=args.dry_run, agents=args.agents, source=args.source,
                                   support=args.support, settings=args.settings,
-                                  legacy_labels=args.legacy_label, app_install=args.app_install))
+                                  legacy_labels=args.legacy_label, app_install=args.app_install,
+                                  **({'adapter': adapter} if adapter else {})))
             return 0
         if args.command == 'login-service':
             from .install import login_service

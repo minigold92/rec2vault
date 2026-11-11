@@ -187,8 +187,17 @@ rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
 <details>
 <summary><b>메뉴 막대 앱 (0.0.x, 선택)</b></summary>
 
-[Releases](https://github.com/minigold92/rec2vault/releases)에 실행 중인 엔진 화면을 열고 스스로
-업데이트하는 작은 메뉴 막대 앱이 있습니다. 아직 엔진을 설치하지는 않으니 위 명령으로 먼저 설치하세요.
+[Releases](https://github.com/minigold92/rec2vault/releases)의 메뉴 막대 앱은 **처음 열 때 엔진을 설치합니다**.
+터미널·Homebrew 없이 **동의하고 엔진 설치**를 누르면 Apple Silicon, macOS 14 이상, 인터넷과
+여유 8GB(엔진 약 2GB + 모델 약 6GB)를 점검하고 단계·모델별 완료·경과 시간을 보여 준 뒤 설정 마법사를 엽니다.
+엔진은 로그인할 때 시작하며 앱을 종료해도 계속 실행됩니다. 기존 CLI 설치는 그대로 사용합니다.
+앱 소유 엔진만 번들 버전·의존성 목록에 맞춰 롤백 있는 업데이트를 하고, 받기가 끊겨도 모델 캐시는 지우지 않습니다.
+
+번들에는 버전·해시 고정 uv, 엔진 wheel·의존성 목록과 **LGPL만 사용한 최소 FFmpeg/ffprobe 7.1.2**가 들어갑니다.
+[공식 소스](https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz)의 SHA-256은
+`089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304`입니다.
+LGPL 전문과 정확한 configure 인자는 앱 Resources의 `engine/COPYING.LGPLv2.1`·`engine/build-inputs.json`에,
+리뷰할 빌드 입력은 [`app/build-inputs.json`](app/build-inputs.json)에 있습니다.
 
 0.0.x는 Apple 개발자 계정 서명이 없어서 macOS가 처음 열 때 막습니다.
 

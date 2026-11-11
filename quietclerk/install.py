@@ -425,6 +425,9 @@ def service_plist(paths, venv, legacy_labels, *, app_install=False):
         data['ProgramArguments'] += ['--legacy-label', name]
     if app_install:
         data['AssociatedBundleIdentifiers'] = ['io.github.minigold92.quietclerk']
+        for binary in ('uv', 'ffmpeg', 'ffprobe'):
+            if (venv / 'bin' / binary).is_file():
+                data['EnvironmentVariables']['QC_' + binary.upper()] = str(venv / 'bin' / binary)
     return plistlib.dumps(data)
 
 
@@ -716,6 +719,10 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             point('locked')
             settings = _update_settings(paths, service)  # Include settings saved during preparation.
             service['ProgramArguments'] = [str(venv / 'bin/python'), *argv[1:]]
+            if (paths.support / APP_RECORD).exists():
+                for binary in ('uv', 'ffmpeg', 'ffprobe'):
+                    if (venv / 'bin' / binary).is_file():
+                        service.setdefault('EnvironmentVariables', {})['QC_' + binary.upper()] = str(venv / 'bin' / binary)
             _atomic(plist, plistlib.dumps(service), snapshot.files[plist][1])
             if (paths.support / APP_RECORD).exists():
                 read_app_installation(paths.support / APP_RECORD)

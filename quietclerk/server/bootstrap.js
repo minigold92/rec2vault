@@ -20,7 +20,7 @@
     }
     if (target) target.textContent = 'QuietClerk: authenticated';
     window.dispatchEvent(new Event('quietclerk:authenticated'));
-    location.replace('/home');
+    location.replace(fragment.get('next') === 'setup' ? '/setup/1' : '/home');
   } catch (_) {
     if (target) target.textContent = 'Run quietclerk open to sign in.';
   }

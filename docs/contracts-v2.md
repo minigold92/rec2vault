@@ -545,6 +545,18 @@ engine update/rollback은 두 기록도 기존 plist와 같은 트랜잭션으�
 plist 삭제다. 앱 소유 기록 없는 기존 CLI 설치는 변경하지 않는다. Rust는 이 명령을 부르기만 하며,
 별도 plist/launchctl 쓰기 구현을 두지 않는다. 상세 파일 형식·공존·실측은 `contracts-app.md` 6절.
 
+A1(0.0.3)의 앱 경로는 `--app-manifest <번들 manifest>`·`--app-tools <서명된 도구 폴더>`를
+`install --app-install`/앱 소유 `update`에만 전달한다. manifest의 wheel·의존성 목록 SHA-256을
+확인하고, macOS arm64/Python 3.12 목록을 `uv pip --require-hashes --only-binary :all:`로 설치한다.
+CLI 기본 설치·업데이트는 기존 PATH·모델 검사 동작을 그대로 쓴다. 앱만 venv에 복사한 LGPL 도구를
+`QC_FFMPEG`/`QC_FFPROBE` 절대 경로로 plist에 기록한다. 마법사의 uv 확인도 venv 도구의 `QC_UV` 절대 경로를 쓴다.
+모델은 첫 설치에서 받고 업데이트에서는 로컬 스냅샷만 확인한다.
+업데이트는 인증된 pause → 기존 작업 종료 대기 → 기존 update/rollback →
+원래 pause 상태 복원이다. 강제 종료 복구용 `app-transaction.json`은 서비스/기록만 복구하며,
+업데이트에서 DB·설정·노트는 되돌리지 않는다. 상세 상태/실패/트러스트 경계는 앱 계약 7절이다.
+앱 최초 인증의 bootstrap fragment는 `next=setup`일 때만 `/setup/1`, 그 밖은 `/home`로
+이동한다. 임의 외부/상대 URL을 받지 않고 token을 HTTP URL·로그로 전달하지 않는다.
+
 ### 10.3 워커 프로토콜
 
 - 인자: `--run-settings <실행 설정 JSON 경로>`(읽기 전용) `--stage <이름>` `--in <입력>`… `--out <출력>`. 워커는 환경 변수로 설정을 다시 합성하지 않는다.

@@ -24,6 +24,11 @@ jobs:
           components: clippy
       - run: npm ci
         working-directory: app
+      - uses: actions/cache@v4
+        with:
+          path: app/.build-cache
+          key: app-tools-arm64-${{ hashFiles('app/build-inputs.json') }}
+      - run: python3 scripts/prepare_app.py
       - run: cargo test --manifest-path src-tauri/Cargo.toml
         working-directory: app
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings

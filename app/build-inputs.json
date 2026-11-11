@@ -1,0 +1,4 @@
+{
+  "uv": {"version": "0.13.1", "url": "https://github.com/astral-sh/uv/releases/download/0.13.1/uv-aarch64-apple-darwin.tar.gz", "sha256": "cfe454573412ff7380d15fc7dae5997ab53ffce72fce0a78e91ddbc84001acd2"},
+  "ffmpeg": {"version": "7.1.2", "url": "https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz", "sha256": "089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304", "configure": ["--disable-autodetect", "--disable-everything", "--disable-doc", "--disable-debug", "--disable-shared", "--enable-static", "--enable-ffmpeg", "--enable-ffprobe", "--enable-protocol=file", "--enable-demuxer=mov,aac,mp3,wav", "--enable-decoder=aac,mp3,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le", "--enable-encoder=pcm_s16le", "--enable-muxer=wav", "--enable-filter=aresample,aformat,anull", "--enable-swresample", "--cc=clang", "--extra-cflags=-mmacosx-version-min=14.0", "--extra-ldflags=-mmacosx-version-min=14.0"]}
+}

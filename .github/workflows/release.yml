@@ -19,6 +19,10 @@ jobs:
           targets: aarch64-apple-darwin
       - run: npm ci
         working-directory: app
+      - uses: actions/cache@v4
+        with:
+          path: app/.build-cache
+          key: app-tools-arm64-${{ hashFiles('app/build-inputs.json') }}
       - name: Tag must match every app version field
         run: |
           v="${GITHUB_REF_NAME#v}"

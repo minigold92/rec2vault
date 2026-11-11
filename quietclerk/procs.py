@@ -45,6 +45,12 @@ def terminate(process, grace=10):
 
 def run(args, *, timeout=900, stage='external', grace=10, input=None, capture_output=False,
         text=False, check=False, cwd=None, env=None, **kwargs):
+    if args and args[0] in ('ffmpeg', 'ffprobe'):
+        executable = os.environ.get('QC_' + args[0].upper())
+        if executable:
+            if not os.path.isabs(executable):
+                raise ValueError('QC media tool paths must be absolute')
+            args = [executable, *args[1:]]
     if input is not None:
         kwargs['stdin'] = subprocess.PIPE
     if capture_output:

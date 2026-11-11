@@ -108,13 +108,13 @@ def _check_provider(settings, provider):
 def checks(root):
     memory = None
     if platform.system() == 'Darwin':
-        memory = int(subprocess.check_output(['sysctl', '-n', 'hw.memsize'], timeout=5))
+        memory = int(subprocess.check_output(['/usr/sbin/sysctl', '-n', 'hw.memsize'], timeout=5))
     elif hasattr(os, 'sysconf'):
         memory = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
     return {'chip': platform.machine(), 'supported': platform.system() == 'Darwin' and platform.machine() == 'arm64',
             'memory_bytes': memory, 'disk_free_bytes': shutil.disk_usage(root).free,
-            'ffmpeg': {'installed': bool(shutil.which('ffmpeg')), 'remedy': 'brew install ffmpeg'},
-            'uv': {'installed': bool(shutil.which('uv')), 'remedy': 'brew install uv'}}
+            'ffmpeg': {'installed': bool(shutil.which(os.environ.get('QC_FFMPEG', 'ffmpeg'))), 'remedy': 'brew install ffmpeg'},
+            'uv': {'installed': bool(shutil.which(os.environ.get('QC_UV', 'uv'))), 'remedy': 'brew install uv'}}
 
 
 def vaults(home=None):

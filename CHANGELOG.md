@@ -1,14 +1,16 @@
 # Changelog / 변경 기록
 
-## Unreleased
+## 0.0.3
 
 ### 한국어
 
-- 앱과 CLI가 같은 로그인 서비스를 사용하도록 등록·해제·상태 API를 추가했습니다. 엔진은 앱과 분리된 Python 서비스로 실행되어 앱 종료·업데이트·이동 중에도 유지됩니다. 첫 설치 화면·서비스 메뉴 연결은 아직 포함하지 않습니다.
+- 앱이 첫 실행 때 엔진·모델을 설치하고 로그인 서비스를 등록합니다. 터미널·Homebrew 없이 진행·경과 시간과 실패 후 다시 시도를 제공하며, 앱을 종료해도 엔진은 계속 실행됩니다.
+- 앱에 버전·해시를 고정한 uv·엔진 wheel·의존성 목록과 LGPL 전용 최소 FFmpeg/ffprobe를 포함합니다. CLI 설치는 그대로 사용하고 앱 소유 엔진만 번들에 맞춰 롤백 있는 업데이트를 합니다.
 
 ### English
 
-- Added a shared login-service lifecycle API for the app and CLI. The Python engine runs independently of the app, surviving app exit, replacement and relocation. First-run installation screens and menu controls are not included yet.
+- The app installs the engine and models on first open and registers its login service, without Terminal or Homebrew. See stages and elapsed time, retry failures, and keep the engine running after quitting the app.
+- Bundled hash-pinned uv, engine wheel/dependencies and minimal LGPL-only FFmpeg/ffprobe. Existing CLI installations stay untouched; app-owned engines follow the bundle through the rollback updater.
 
 ## 0.0.2
 

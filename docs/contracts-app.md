@@ -1,13 +1,13 @@
 # 앱 셸 ↔ 엔진 계약
 
-D0/S1, 앱 0.0.2. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대로 따른다. 첫 실행 설치 화면·메뉴 연결(A1)은 아직 없으며, S1의 서비스 함수와 설치 옵션을 이 문서에 고정한다.
+D0/S1/A1, 앱 0.0.3. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대로 따른다. S1 서비스 인터페이스는 6절, 첫 실행 설치·메뉴·앱 소유 엔진 맞추기는 7절이다.
 
 ## 1. 식별자·위치·역할
 
 - 제품명: QuietClerk. 앱 식별자: `io.github.minigold92.quietclerk`(변경하지 않는다).
 - 대상: Apple Silicon(`aarch64-apple-darwin`), macOS 14.0 이상. 앱은 `/Applications/QuietClerk.app`에 놓는 DMG 방식이다.
 - 앱은 메뉴 막대 상주 앱이다(`LSUIElement`, Accessory 활성화 정책). Dock에 중복 아이콘을 두지 않는다. 창을 닫아도 앱은 남고 ‘종료 / Quit’만 앱을 끝낸다. 엔진의 생명주기는 바꾸지 않는다.
-- 엔진 접속 파일: `~/Library/Application Support/QuietClerk/bootstrap.json`. 일반 창 열기는 이 파일을 읽기만 한다. S1의 별도 서비스 함수는 엔진 CLI를 통해서만 등록·해제한다(6절). 일반 앱 시작·종료가 서비스를 등록·해제하지 않는다.
+- 엔진 접속 파일: `~/Library/Application Support/QuietClerk/bootstrap.json`. 창 열기 전 앱은 서비스 소유권과 인증 상태를 확인한다. 설치·등록은 Python 설치기 소유이며 앱 종료는 서비스를 내리지 않는다(6·7절).
 - 현재 엔진 데이터 위치는 엔진 설정·설치 계약을 따른다. 설계의 미래 `engine/<잠금 해시>/` 배치는 아직 구현하지 않았다.
 
 ## 2. bootstrap 읽기
@@ -18,21 +18,21 @@ D0/S1, 앱 0.0.2. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대
 2. `O_NOFOLLOW`로 열어 마지막 경로의 심볼릭 링크를 거부한다. 열린 파일 기술자의 메타데이터를 확인한다(경로 검사 뒤 다시 여는 방식이 아님). 비정규 파일에서 열기가 멈추지 않도록 `O_NONBLOCK`도 사용한다.
 3. 소유자가 `getuid()`와 같고, 일반 파일이며, 특수 비트를 포함한 권한이 정확히 `0600`이어야 한다. 부모 디렉터리의 심볼릭 링크는 별도로 거부하지 않는다(엔진과 같음).
 4. JSON의 `expires`가 현재 Unix 시각보다 커야 하고, `token`은 문자열, `port`는 1–65535의 정수여야 한다. 빈 문자열 token은 Python reader처럼 읽기는 허용한다(유효한 세션인지 판단하는 쪽은 엔진).
-5. 없거나 검사·파싱에 실패하면 묶인 `ui/index.html`을 표시한다. 엔진 설치·실행 여부 또는 접속 파일 문제로 연결할 수 없음을 한국어·영어로 안내하고 README Install 주소를 제공한다. 파일이 유효하나 서버가 응답하지 않는 경우는 웹뷰의 연결 오류이며 설치 여부를 추가 탐지하지 않는다.
+5. 없거나 검사·파싱·인증에 실패하면 묶인 `ui/index.html`에 상태·실패 이유·다시 시도를 표시한다. 미설치이면 크기·백그라운드 실행 동의와 설치 버튼을 보여 준다.
 
 ## 3. 창·신뢰 경계
 
 - 여는 주소는 CLI와 같은 `http://127.0.0.1:{port}/#bootstrap={token}`이다. 토큰을 로그나 명령행에 쓰지 않는다.
 - 엔진 창은 **http + 127.0.0.1 + 읽은 포트**의 오리진만 탐색할 수 있다. localhost·다른 포트·https·외부 사이트·사용자정보 포함 URL을 거부한다. 새 창도 거부한다.
 - 열 때 창을 다시 만들어 토큰과 이동 제한을 함께 새로 적용한다. 엔진이 제공하는 화면·인증 흐름은 변경하지 않는다.
-- 정적 안내 창도 묶인 안내 문서 밖으로 이동할 수 없다. README 주소는 복사해 브라우저에서 여는 안내다.
-- Tauri capability 목록은 비어 있다. 원격 엔진 화면에 Tauri IPC 권한을 부여하지 않으며 JS 호출 명령도 노출하지 않는다. 업데이트·대화상자는 Rust에서만 호출한다.
-- 메뉴·대화상자는 macOS 선호 언어가 `ko`면 한국어, 나머지는 영어다. 정적 안내는 두 언어를 함께 표시한다.
+- 번들 안내 창은 묶인 안내 문서 밖으로 이동할 수 없다. 원격 엔진 창과 분리하여 만든다.
+- Tauri capability 목록은 비어 있고 원격 권한을 추가하지 않는다. JS 명령은 `installation_status`/`install_engine` 두 개뿐이며, Rust에서도 호출 창의 실제 URL·label을 확인해 번들 페이지 외 출처를 거부한다. 업데이트·대화상자는 Rust에서만 호출한다.
+- 메뉴·대화상자는 macOS 선호 언어가 `ko`면 한국어, 나머지는 영어다. 번들 화면도 한국어·영어를 함께 관리하고 선호 언어로 표시한다.
 
 ## 4. 업데이트·릴리스
 
 - 엔드포인트: `https://github.com/minigold92/rec2vault/releases/latest/download/latest.json`.
-- `tauri-plugin-updater`가 앱 시작 시 한 번, 메뉴 선택 때 확인한다. 자동 확인은 반복하지 않고, 동시에 두 확인을 하지 않는다. 새 버전이 있으면 자동·수동 모두 시스템 확인 대화상자 뒤 내려받기·서명 검증·설치·앱 재시작한다. 자동 확인의 최신 버전·확인 실패는 화면에 표시하지 않는다. 메뉴로 요청한 확인만 최신 버전·확인 실패 결과를 보여 준다. 확인 실패는 연결을 확인하고 나중에 다시 시도하라는 한국어·영어 안내이며, 원문 오류는 표준 오류 로그에만 남긴다. 설치 실패도 원문은 로그에만 남기고 사용자에게 설치 실패 안내를 표시한다. 엔진은 재시작하거나 업데이트하지 않는다.
+- `tauri-plugin-updater`가 앱 시작 시 한 번, 메뉴 선택 때 확인한다. 동시에 두 확인을 하지 않는다. 새 버전은 시스템 확인 대화상자 뒤 내려받기·서명 검증·설치·재시작한다. 자동 확인의 최신/실패는 조용히 기록하고 수동 확인만 결과를 표시한다. 앱 교체 자체는 엔진을 중지하지 않으며, 재시작 뒤 앱 소유 엔진이 다르면 7절의 작업 대기·rollback update를 수행한다.
 - 현재 채널은 latest 하나다. `-`가 있는 태그는 GitHub prerelease로 올리며 latest 자동 조회 대상이 아니다. 설계 v3 8장의 prerelease → 운영 확인 → 같은 빌드 정식 승격 절차와 베타 채널 선택은 이후 과제다.
 - 앱 버전은 Cargo·package.json·tauri.conf.json·CHANGELOG에서 맞춘다. 초기 공개는 `0.0.x`, 태그는 `v0.0.x`; prerelease는 `v0.0.x-beta.N`처럼 쓴다. 앱 버전도 해당 prerelease와 맞춰야 한다.
 - CI는 태그 버전의 CHANGELOG 한국어·영어 절을 Release 본문으로 쓴다. DMG와 `.app.tar.gz`, `.sig`, `latest.json`을 같은 Release에 올린다.
@@ -44,7 +44,7 @@ D0/S1, 앱 0.0.2. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대
 - Rust 제품 코드 1,500줄 이하(시험 제외), Swift 300줄 이하. S1 선택은 기존 Python launchd 설치기이므로 Swift·네이티브 서비스 헬퍼·앱 엔진 모드는 없다. 엔진 로직을 셸로 옮기지 않는다.
 - 순수 함수 시험: 소유자·권한·일반 파일 검사, 만료·형식·포트, 심볼릭 링크 거부, 주소·오리진 경계, 언어 선택, 자동·수동 업데이트 확인 × 새 버전·최신 버전·확인 실패의 여섯 표시 판단. 실사용 디렉터리를 건드리지 않는다.
 - 엔진 최소 버전 확인은 아직 없다. bootstrap에 버전 협상을 추가하고 최소 버전을 고정하는 일은 이후 과제다.
-- 엔진 첫 설치·모델 내려받기·서비스 메뉴 노출은 A1 이후 범위다. S1 함수는 설치된 엔진만 등록·해제하며, 설치되지 않은 엔진을 암묵적으로 만들지 않는다.
+- 엔진 첫 설치·모델 내려받기·상태 메뉴는 7절 A1에 구현한다. S1 함수 자체는 설치된 엔진만 등록·해제하며, 미설치 엔진을 암묵적으로 만들지 않는다.
 
 ## 6. S1 로그인 서비스 (2026-11-11)
 
@@ -104,3 +104,33 @@ D0/S1, 앱 0.0.2. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대
 - 정리: 시험 앱은 `~/Applications`에만 만들고 `lsregister -u` 후 삭제했다. 기본 root는 만들지 않았고, 기본 support·LaunchAgents plist·서비스 등록은 시험 뒤 없게 복구했다. `/Applications/QuietClerk.app`은 건드리지 않았다. BTM의 비활성 이력/label enable override는 macOS DB에 남을 수 있다. 전체 로그인 항목을 지우는 `sfltool resetbtm`은 하지 않는다. 단일 BTM 이력 삭제용 공개 명령은 확인하지 못했으며, 사용자는 시스템 설정 > 일반 > 로그인 항목에서 시험 항목이 보이면 끄고 확인할 수 있다(실행 파일·서비스는 이미 없음).
 - **로그인 자동 시작은 launchd RunAtLoad/KeepAlive와 BTM 기록으로만 확인했다.** 실제 재로그인·재부팅은 미확인. A1 설치 후 다음 재부팅 때 앱을 열기 전에 `launchctl print gui/$(id -u)/local.quietclerk.serve`의 `state = running`과 `quietclerk status`를 확인한다.
 - **P1 재평가 조건:** Developer ID로 서명한 동일 bundle ID의 두 버전으로 A 등록→인증→앱 종료→kill→번들 교체→자동 재등록→이동→CLI 공존→해제를 다시 실측한다. 처리 중이면 인증 상태의 `current_job`이 없어질 때까지 기다리고, 실패 이유를 UI에 표시·다음 시작 재시도하는 설계를 그때 함께 구현한다. ad-hoc의 `LWCR.cdhash` 결과를 Developer ID 동작으로 일반화하지 않는다. API 근거: [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice), [objc2-service-management 설명](https://docs.rs/objc2-service-management/latest/objc2_service_management/struct.SMAppService.html).
+
+## 7. A1 앱 소유 설치·첫 실행 (0.0.3)
+
+### 불변식·실패 경계
+
+- CLI 소유 엔진은 설치·등록·업데이트하지 않는다. `login_service::status(home)`의 `cli` 판단을 우선하고, 인증된 상태를 확인한 뒤 기존 엔진 화면만 연다.
+- 앱 리소스는 빌드된 wheel, macOS arm64/Python 3.12용 `engine-requirements.txt`(모든 버전·SHA-256 고정), manifest, LGPL 전문과 빌드 입력이다. wheel·목록 해시를 실행 전에 확인한다. 준비 스크립트 `scripts/prepare_app.py` 하나를 로컬 Tauri와 두 macOS CI가 같이 쓴다.
+- `uv` 0.13.1은 공식 배포 tar SHA-256을 검사하고 `externalBin`에 둔다. Resources 안 Mach-O는 Tauri 서명 대상이 아니므로 사용하지 않는다. FFmpeg 7.1.2도 SHA-256 고정 공식 소스를 필요한 디먹서·디코더·PCM/WAV 출력·리샘플러만 켜 정적 빌드하고 `externalBin`으로 서명한다. GPL/nonfree는 금지한다. 정확한 URL·해시·configure 인자는 `app/build-inputs.json`, LGPL 전문은 Resources의 `COPYING.LGPLv2.1`에 들어간다. CI 캐시 키는 이 입력 전체의 해시다.
+- 최초 설치는 Apple Silicon·macOS 14 이상·여유 8GB(엔진 약 2GB + 모델 약 6GB)·네트워크를 확인한 뒤 사용자 동의로 시작한다. 모델은 **설치 단계**에서 받는다. 기존 마법사 2단계는 다운로드 API가 없어 터미널 없이 완료할 수 없기 때문이다. 모델별 시작·완료와 전체 경과 시간을 표시하고 Hugging Face 캐시를 재사용한다. 앱 업데이트는 모델을 다시 받지 않는다.
+- 번들 uv가 Python 3.12 부트스트랩 환경을 만든 뒤 번들 wheel의 CLI로 `install --app-install --source <wheel>`을 실행한다. 앱 전용 옵션은 고정 목록·도구 위치를 전달한다. 기존 CLI 기본 동작은 바꾸지 않는다. 서비스·등록·인증·롤백은 Python 설치기 소유다. plist 실행 파일은 venv Python이다.
+- 상태 기계: 확인 → 미설치 안내 → 사전 점검 → Python 준비 → 의존성 설치 → 모델 확인 → 서비스 등록·인증 → 엔진 화면. 앱 소유의 버전/목록 해시가 다르면 작업 종료 대기 → 기존 rollback update → 인증 → 화면이다. 서비스 중지/승인 거부·네트워크·디스크·해시 실패는 한 문장 이유와 다시 시도, support의 `app-install.log`로 끝난다. CLI 설치는 이 전이에 들어가지 않는다.
+- 동시 설치는 프로세스 수명의 파일 잠금으로 거부한다. 실패·강제 종료의 미완료 트랜잭션은 다음 시도에서 이전 서비스/기록으로 복구하고 다시 설치한다. 완료 표시 전 환경은 엔진으로 사용하지 않는다. support/root 및 경로 조상의 심볼릭 링크는 앱 설치 경로에서 거부한다.
+- 앱 도구는 명시적 `QC_UV`/`QC_FFMPEG`/`QC_FFPROBE` 절대 경로로 지정하고 venv에 보존한다. CLI는 기존 PATH 도구를 그대로 쓴다. 앱 번들을 이동하거나 교체해도 서비스 도구 경로는 바뀌지 않는다.
+- Tauri IPC는 번들 안내 페이지 출처·현재 안내 창에서만 허용한다. 원격 엔진 화면에는 권한을 주지 않는다. 경로·명령·URL 등 사용자 입력을 받는 IPC는 없다. 상태/시작만 허용하고 설치 소스는 검증한 번들 리소스에 고정한다.
+- 첫 설치 성공은 support의 `app-open-setup` 표식으로 다음 앱 창에 전달한다. 앱은 bootstrap fragment에 `next=setup`만 넣고 엔진은 인증 뒤 고정 `/setup/1`로 이동한다(다른 값은 `/home`, 임의 URL/리다이렉트 금지). 실제 마법사 탐색이 시작되면 표식을 지워 이후 일반 열기는 홈을 쓴다. bootstrap 환경의 PyYAML은 전체 잠금 목록에서 기계적으로 뽑은 해시 고정 부분 목록으로 설치하며 manifest에도 해시를 기록한다.
+
+### 입력·상황별 처리 방침
+
+| 입력·상황 | 처리·자동 시험 |
+|---|---|
+| Intel·macOS 13 이하·여유 8GB 미만 | 설치/네트워크 전에 중단하고 필요한 조건·크기를 안내 (`test_platform_and_disk_fail_before_network`) |
+| 네트워크 단절 | 사전 점검 중단, 설치 중 오류는 로그·다시 시도. 완료 모델 파일은 캐시 재사용 (`test_network_disconnection_is_retryable_before_install`, `test_model_download_restart_reuses_completed_files_and_reports_each_model`) |
+| wheel·목록·manifest 손상 | 컴파일된 manifest SHA-256과 각 파일 SHA-256이 모두 맞아야 실행 (`resources_require_compiled_manifest_and_matching_bytes`, `test_damaged_bundle_stops_before_environment_creation`) |
+| CLI 설치·사용자 plist 교체 | 읽기·인증만, 앱 옵션을 주어도 소유권 없는 update는 거부 (`test_cli_coexistence_never_preflights_or_installs`, `test_app_packaging_options_cannot_modify_cli_owned_service`) |
+| 앱 소유 다른 버전·목록 해시 | pause로 새 claim을 막고 현재 작업 종료 대기 → 기존 update/rollback → 기존 pause 상태 복원 (`test_changed_app_engine_waits_for_job_then_uses_rollback_update`, S1 `test_update_failure_restores_app_metadata_and_service`) |
+| 설치 중 강제 종료 | 내구성 journal로 이전 서비스/기록 복구 후 새 환경에서 재시도; 미완성 환경을 열지 않음 (`test_killed_first_install_recovers_private_journal_before_retry`) |
+| 앱 두 개의 설치 요청 | support의 프로세스 수명 flock으로 둘째 거부 (`concurrent_installs_and_symlinks_are_rejected`) |
+| support/root/`.venvs` 심볼릭 링크 | 링크를 따라 쓰지 않고 중단 (`test_symlinked_root_support_and_environment_are_rejected`, Rust 잠금 시험) |
+| 원격 엔진·외부 출처의 IPC | 실제 webview URL과 label의 번들 출처 검사로 거부. 원격 capability 없음 (`installation_ipc_rejects_remote_and_other_windows`) |
+| 앱 번들 이동·교체 | Python·uv·FFmpeg/ffprobe는 venv의 절대 경로, 앱 경로에 의존하지 않음. `QC_UV`는 마법사의 도구 확인에도 사용 |
