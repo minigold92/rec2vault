@@ -18,6 +18,7 @@ the easiest to review.
 
 | Path | What it does |
 |---|---|
+| `app/` | Tauri v2 Mac menu bar shell (Rust + one static fallback page; no JS framework or bundler) |
 | `quietclerk/serve.py`, `executor.py`, `store.py` | The service: scheduler, one-job-at-a-time executor, SQLite state |
 | `quietclerk/intake.py`, `quarantine.py`, `probe.py` | Inbox checks: stability, size, duration, decoding, deduplication |
 | `quietclerk/stages/` | Pipeline stages (audio, local models, text, note) |
@@ -38,6 +39,30 @@ uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette -
 The suite runs on Linux CI without MLX: models and text engines are faked, audio is synthesized
 with ffmpeg. A change in behaviour should come with a test that fails without it. Tests must not
 touch your real `~/QuietClerk`, `~/Library/LaunchAgents` or launchctl.
+
+### Mac app (Apple Silicon, macOS 14+)
+
+Install Rust stable (including `aarch64-apple-darwin`), Xcode Command Line Tools and Node/npm.
+The app contract is [docs/contracts-app.md](docs/contracts-app.md). From the repository root:
+
+```sh
+cd app
+npm ci
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+npm run tauri -- dev
+# Local ad-hoc app + DMG build; no updater private key required:
+npm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg \
+  --config '{"bundle":{"createUpdaterArtifacts":false}}'
+```
+
+The app and DMG are under `app/src-tauri/target/aarch64-apple-darwin/release/bundle/`.
+Rust unit tests use temporary bootstrap files and never touch the real engine data.
+The shell reads the existing engine's private bootstrap file; it does not install or start the engine.
+The colored app icon comes from `quietclerk/server/static/seogi.svg` (`tauri icon … --fit contain`);
+`app/src-tauri/icons/tray.svg` is its monochrome outline, rendered with `tauri icon … --png 44`.
+For release builds only, CI uses the two updater signing secrets and creates signed update artifacts.
+Keep Cargo, npm, Tauri and CHANGELOG versions aligned before pushing a `v*` tag.
 
 To exercise the real models on an Apple Silicon Mac, process a demo recording into a throwaway root:
 

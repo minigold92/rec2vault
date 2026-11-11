@@ -9,3 +9,26 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       # The tests cover intake, correction/summary logic and rendering; they do not load MLX models.
       - run: uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          components: clippy
+      - run: npm ci
+        working-directory: app
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+        working-directory: app
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        working-directory: app
+      - run: >-
+          npm run tauri -- build --target aarch64-apple-darwin --bundles app
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        working-directory: app

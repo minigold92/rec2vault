@@ -9,6 +9,7 @@ the project needs and cannot infer from the code. Write user-facing replies to t
 |---|---|
 | `docs/contracts-v2.md` | Engine contract: stages, states, caching, providers, note ownership, settings. Change it before changing behaviour |
 | `docs/product-design-v3.md` | Mac app design, work items (D0, S1-S3, E1-E4, A1-A3, B, P), development and QA process (chapter 10) |
+| `docs/contracts-app.md` | App shell ↔ engine boundary: bootstrap security, navigation, identity, updates and version policy |
 | `docs/acceptance-v2.md`, `docs/acceptance.md` | What was verified, at which level (real input / assumed / not verified) |
 | `docs/how-it-works.md` | Every stage on the fictional demo meeting |
 
