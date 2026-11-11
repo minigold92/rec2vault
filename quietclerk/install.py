@@ -10,6 +10,7 @@ Platform operations are isolated in MacAdapter; tests must supply a fake adapter
 and temporary home/LaunchAgents directories. Importing this module is read-only.
 """
 import fcntl
+import hashlib
 import json
 import os
 import platform
@@ -220,6 +221,37 @@ class MacAdapter:
                 'uv': shutil.which('uv') or 'missing'}
 
 
+APP_RECORD = 'engine-installation.json'
+
+
+def read_app_installation(path):
+    """Private app ownership record, not an alternative engine configuration."""
+    import stat
+    try:
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode):
+                raise ValueError('record must be an owned regular file with mode 0600')
+            record = json.load(stream)
+        if (record.get('schema') != 1 or record.get('manager') != 'app' or record.get('label') != LABEL or
+                not all(isinstance(record.get(key), str) and Path(record[key]).is_absolute()
+                        for key in ('python', 'settings', 'support', 'root', 'plist'))):
+            raise ValueError('invalid app installation record')
+        return record
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        raise InstallError(f'invalid app installation record: {exc}') from exc
+
+
+def _record_app_service(paths, plist, venv):
+    content = Path(plist).read_bytes()
+    record = {'schema': 1, 'manager': 'app', 'label': LABEL,
+              'python': str(venv / 'bin/python'), 'root': str(paths.root),
+              'settings': str(paths.settings), 'support': str(paths.support),
+              'plist': str(plist), 'plist_sha256': hashlib.sha256(content).hexdigest()}
+    _atomic(paths.support / 'service.plist', content)
+    _atomic(paths.support / APP_RECORD, json.dumps(record).encode())
+
+
 @dataclass(frozen=True)
 class Layout:
     root: Path
@@ -379,7 +411,7 @@ def migrate_settings(paths, env):
     return validated
 
 
-def service_plist(paths, venv, legacy_labels):
+def service_plist(paths, venv, legacy_labels, *, app_install=False):
     resource = files('quietclerk').joinpath('deploy/launchd.plist.in')
     template = (resource.read_text(encoding='utf-8') if resource.is_file() else
                 (Path(__file__).resolve().parent.parent / 'deploy/launchd.plist.in').read_text(encoding='utf-8'))
@@ -391,6 +423,8 @@ def service_plist(paths, venv, legacy_labels):
     data = plistlib.loads(template.encode())
     for name in legacy_labels:
         data['ProgramArguments'] += ['--legacy-label', name]
+    if app_install:
+        data['AssociatedBundleIdentifiers'] = ['io.github.minigold92.quietclerk']
     return plistlib.dumps(data)
 
 
@@ -435,7 +469,7 @@ class Snapshot:
 
 
 def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_labels=(),
-        environ=None, fault=None, **locations):
+        environ=None, fault=None, app_install=False, **locations):
     """Perform one upgrade/install. fault(stage) is for deterministic failure tests."""
     paths = layout(root, upgrading=upgrading, **locations)
     env = dict(os.environ if environ is None else environ)
@@ -490,7 +524,8 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
                                   ('-wal', '-shm', '-journal')), paths.settings,
                        paths.root / 'settings.env', paths.root / 'settings.env.migrated',
                        paths.root / 'installation.json', paths.root / 'installation.lock',
-                       paths.agents / (LABEL + '.plist'), paths.support / 'source.json']
+                       paths.agents / (LABEL + '.plist'), paths.support / APP_RECORD,
+                       paths.support / 'service.plist', paths.support / 'source.json']
             snapshot = Snapshot(tracked)
             venv.parent.mkdir(parents=True, exist_ok=True)
             adapter.prepare_environment(paths.source, venv)
@@ -508,7 +543,9 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
             point('database')
             (paths.root / 'logs').mkdir(exist_ok=True)
             plist = paths.agents / (LABEL + '.plist')
-            _atomic(plist, service_plist(paths, venv, labels))
+            _atomic(plist, service_plist(paths, venv, labels, app_install=app_install))
+            if app_install:
+                _record_app_service(paths, plist, venv)
             from .selfupdate import record_source
             record_source(paths.support, paths.source)
             execution_guard.close()  # Hand both execution locks to the new serve.
@@ -625,7 +662,8 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
     _require_v2(paths)
     if not plist.is_file():
         raise InstallError('not installed: missing service plist; use quietclerk install')
-    snapshot = Snapshot([plist, paths.support / 'source.json'])
+    snapshot = Snapshot([plist, paths.support / 'source.json', paths.support / APP_RECORD,
+                         paths.support / 'service.plist'])
     try:
         service = plistlib.loads(snapshot.files[plist][0])
         if not isinstance(service, dict):
@@ -652,9 +690,9 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             'Keep previous venv; remove older managed venvs; leave DB/settings/notes untouched']
     if dry_run:
         return '\n'.join(plan)
-    adapter = adapter or MacAdapter()
     venv = paths.root / '.venvs' / uuid.uuid4().hex
     stopped = False
+    adapter = adapter or MacAdapter()
     new_attempted = False
     def point(stage):
         if fault:
@@ -679,6 +717,9 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             settings = _update_settings(paths, service)  # Include settings saved during preparation.
             service['ProgramArguments'] = [str(venv / 'bin/python'), *argv[1:]]
             _atomic(plist, plistlib.dumps(service), snapshot.files[plist][1])
+            if (paths.support / APP_RECORD).exists():
+                read_app_installation(paths.support / APP_RECORD)
+                _record_app_service(paths, plist, venv)
             point('plist')
             from .selfupdate import record_source
             record_source(paths.support, paths.source)
@@ -751,3 +792,69 @@ def doctor(*, root=None, adapter=None, home=None, agents=None, legacy_labels=())
         rows.append((f'service {label}', state))
     width = max(len(key) for key, _ in rows)
     return '\n'.join(f'{key:<{width}} | {value}' for key, value in rows)
+
+
+def login_service(action, *, support=None, home=None, adapter=None):
+    """App OS lifecycle API. CLI-owned services are read-only, never adopted."""
+    if action not in ('status', 'register', 'unregister'):
+        raise InstallError('invalid login service action')
+    support = Path(support or SUPPORT).absolute()
+    home = Path(home or Path.home()).absolute()
+    adapter = adapter or MacAdapter()
+    plist = home / 'Library/LaunchAgents' / (LABEL + '.plist')
+    record_path = support / APP_RECORD
+
+    def inspect():
+        registered = adapter.registered(LABEL)
+        if not record_path.exists():
+            return {'manager': 'cli' if plist.exists() or registered else None,
+                    'registered': registered, 'login_enabled': plist.exists()}, None
+        record = read_app_installation(record_path)
+        if Path(record['support']) != support or Path(record['plist']) != plist:
+            raise InstallError('app installation locations do not match this user')
+        content = (support / 'service.plist').read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        if digest != record.get('plist_sha256'):
+            raise InstallError('saved app service definition changed')
+        # A CLI/user replacement wins over stale app ownership metadata.
+        conflict = ((plist.exists() and plist.read_bytes() != content) or
+                    (registered and not plist.exists()))
+        return {'manager': 'cli' if conflict else 'app', 'registered': registered,
+                'login_enabled': plist.exists()}, (record, content)
+
+    state, installed = inspect()
+    if action == 'status' or state['manager'] != 'app':
+        return state
+    with _lock(support / 'upgrade.lock'):
+        state, installed = inspect()
+        if state['manager'] != 'app':
+            return state
+        record, content = installed
+        paths = Layout(Path(record['root']), home, Path(__file__).parent.parent,
+                       plist.parent, support, Path(record['settings']))
+        if action == 'unregister':
+            adapter.unload(LABEL)
+            with _lock(support / 'serve.lock', wait=STOP_WAIT_SEC), _lock(paths.root / 'tick.lock', wait=STOP_WAIT_SEC):
+                plist.unlink(missing_ok=True)
+        elif not state['registered']:
+            service = plistlib.loads(content)
+            settings = _update_settings(paths, service)
+            before = Snapshot([plist])
+            attempted = False
+            try:
+                # Do not start a second engine beside a manually running serve.
+                with _lock(support / 'serve.lock'), _lock(paths.root / 'tick.lock'):
+                    _atomic(plist, content)
+                attempted = True
+                started = time.time_ns()
+                adapter.register(plist)
+                adapter.start(LABEL)
+                if not adapter.healthy(LABEL, support, settings, started):
+                    raise InstallError('login service failed authenticated status check')
+            except BaseException:
+                if attempted:
+                    adapter.unload(LABEL)
+                with _lock(support / 'serve.lock', wait=STOP_WAIT_SEC), _lock(paths.root / 'tick.lock', wait=STOP_WAIT_SEC):
+                    before.restore()
+                raise
+        return inspect()[0]

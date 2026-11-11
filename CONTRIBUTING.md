@@ -58,7 +58,11 @@ npm run tauri -- build --target aarch64-apple-darwin --bundles app,dmg \
 
 The app and DMG are under `app/src-tauri/target/aarch64-apple-darwin/release/bundle/`.
 Rust unit tests use temporary bootstrap files and never touch the real engine data.
-The shell reads the existing engine's private bootstrap file; it does not install or start the engine.
+The normal shell reads the existing engine's private bootstrap file; it does not implicitly install or start it.
+The S1 library exposes explicit service functions that call the Python installer (`contracts-app.md` §6).
+The opt-in `scripts/probe_login_service.py` exercises real launchd and cleans its temporary app/service;
+it refuses an existing local engine and is never part of pytest. Build its Rust entrypoint with
+`cargo build --manifest-path app/src-tauri/Cargo.toml --release --target aarch64-apple-darwin --example login_service_probe`.
 The colored app icon comes from `quietclerk/server/static/seogi.svg` (`tauri icon … --fit contain`);
 `app/src-tauri/icons/tray.svg` is its monochrome outline, rendered with `tauri icon … --png 44`.
 For release builds only, CI uses the two updater signing secrets and creates signed update artifacts.

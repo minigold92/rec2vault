@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod bootstrap;
+use quietclerk_app::bootstrap;
 mod update_policy;
 
 use std::{

@@ -58,6 +58,8 @@ def main(argv=None):
     serve = sub.add_parser('serve')
     serve.add_argument('--legacy-label', action='append', default=[])
     sub.add_parser('open')
+    login = sub.add_parser('login-service', help='read or change the app-managed login service')
+    login.add_argument('action', choices=('status', 'register', 'unregister'))
     sub.add_parser('status')
     search = sub.add_parser('search')
     search.add_argument('query')
@@ -84,6 +86,8 @@ def main(argv=None):
         command.add_argument('--legacy-label', action='append', default=[])
         if name != 'doctor':
             command.add_argument('--dry-run', action='store_true')
+            command.add_argument('--app-install', action='store_true',
+                                 help='mark this as an app-managed login service (same Python engine)')
             command.add_argument('--agents', type=Path)
             command.add_argument('--source', type=Path,
                                  help='source checkout or retained QuietClerk wheel (required for wheel installs)')
@@ -101,7 +105,11 @@ def main(argv=None):
                 print(install.run(upgrading=args.command == 'upgrade', root=args.root,
                                   dry_run=args.dry_run, agents=args.agents, source=args.source,
                                   support=args.support, settings=args.settings,
-                                  legacy_labels=args.legacy_label))
+                                  legacy_labels=args.legacy_label, app_install=args.app_install))
+            return 0
+        if args.command == 'login-service':
+            from .install import login_service
+            print(json.dumps(login_service(args.action, support=args.support)))
             return 0
         if args.command == 'serve':
             from . import config
@@ -148,7 +156,7 @@ def main(argv=None):
                 pass
         return 0
     except (OSError, ValueError, RuntimeError, KeyError, sqlite3.DatabaseError) as exc:
-        if args and args.command in ('install', 'upgrade', 'update', 'doctor'):
+        if args and args.command in ('install', 'upgrade', 'update', 'doctor', 'login-service'):
             print(f'QuietClerk {args.command} failed: {exc}', file=sys.stderr)
             return 1
         print('QuietClerk is unavailable; check the service and its private bootstrap file.', file=sys.stderr)

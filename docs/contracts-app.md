@@ -1,13 +1,13 @@
 # 앱 셸 ↔ 엔진 계약
 
-D0, 앱 0.0.1. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대로 따른다. 이 문서는 구현된 셸 경계만 정한다. 이후 제품 방향은 `product-design-v3.md`를 따른다.
+D0/S1, 앱 0.0.2. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대로 따른다. 첫 실행 설치 화면·메뉴 연결(A1)은 아직 없으며, S1의 서비스 함수와 설치 옵션을 이 문서에 고정한다.
 
 ## 1. 식별자·위치·역할
 
 - 제품명: QuietClerk. 앱 식별자: `io.github.minigold92.quietclerk`(변경하지 않는다).
 - 대상: Apple Silicon(`aarch64-apple-darwin`), macOS 14.0 이상. 앱은 `/Applications/QuietClerk.app`에 놓는 DMG 방식이다.
 - 앱은 메뉴 막대 상주 앱이다(`LSUIElement`, Accessory 활성화 정책). Dock에 중복 아이콘을 두지 않는다. 창을 닫아도 앱은 남고 ‘종료 / Quit’만 앱을 끝낸다. 엔진의 생명주기는 바꾸지 않는다.
-- 엔진 접속 파일: `~/Library/Application Support/QuietClerk/bootstrap.json`. D0 셸은 이 파일을 읽기만 한다. 데이터·LaunchAgent를 만들거나 고치지 않고 엔진 명령도 실행하지 않는다.
+- 엔진 접속 파일: `~/Library/Application Support/QuietClerk/bootstrap.json`. 일반 창 열기는 이 파일을 읽기만 한다. S1의 별도 서비스 함수는 엔진 CLI를 통해서만 등록·해제한다(6절). 일반 앱 시작·종료가 서비스를 등록·해제하지 않는다.
 - 현재 엔진 데이터 위치는 엔진 설정·설치 계약을 따른다. 설계의 미래 `engine/<잠금 해시>/` 배치는 아직 구현하지 않았다.
 
 ## 2. bootstrap 읽기
@@ -41,7 +41,66 @@ D0, 앱 0.0.1. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그대로
 
 ## 5. 유지보수 한도·아직 없는 약속
 
-- Rust 제품 코드 1,500줄 이하(시험 제외), Swift 300줄 이하. D0에 Swift는 없다. 엔진 로직을 셸로 옮기지 않는다.
+- Rust 제품 코드 1,500줄 이하(시험 제외), Swift 300줄 이하. S1 선택은 기존 Python launchd 설치기이므로 Swift·네이티브 서비스 헬퍼·앱 엔진 모드는 없다. 엔진 로직을 셸로 옮기지 않는다.
 - 순수 함수 시험: 소유자·권한·일반 파일 검사, 만료·형식·포트, 심볼릭 링크 거부, 주소·오리진 경계, 언어 선택, 자동·수동 업데이트 확인 × 새 버전·최신 버전·확인 실패의 여섯 표시 판단. 실사용 디렉터리를 건드리지 않는다.
 - 엔진 최소 버전 확인은 아직 없다. bootstrap에 버전 협상을 추가하고 최소 버전을 고정하는 일은 이후 과제다.
-- 엔진 설치·시작·로그인 항목·상태·끌어놓기 등은 A1/S1 이후 범위다. 현재 셸은 이 동작을 암묵적으로 보장하지 않는다.
+- 엔진 첫 설치·모델 내려받기·서비스 메뉴 노출은 A1 이후 범위다. S1 함수는 설치된 엔진만 등록·해제하며, 설치되지 않은 엔진을 암묵적으로 만들지 않는다.
+
+## 6. S1 로그인 서비스 (2026-11-11)
+
+### 6.1 선택·불변식
+
+- **0.0.x ad-hoc은 기존 launchd plist + venv Python 직접 실행(B 변형)**을 쓴다. label은 앱·CLI 모두 `local.quietclerk.serve`, plist는 `~/Library/LaunchAgents/local.quietclerk.serve.plist`. `ProgramArguments[0]`은 설치기가 만든 venv의 `bin/python`이다. 앱 실행 파일·앱 경로·앱 cdhash에 의존하지 않는다.
+- `RunAtLoad` + `KeepAlive`, 같은 `quietclerk serve`·설정·데이터·사용자 고정 `serve.lock`을 재사용한다. 창 닫기·앱 종료는 서비스에 아무 명령도 보내지 않는다. 앱 번들 업데이트·이동에도 엔진을 재등록하거나 재시작하지 않는다. 따라서 처리 중 앱 업데이트로 엔진이 끊기는 A의 재등록 문제도 없다.
+- 앱 설치용 plist에는 `AssociatedBundleIdentifiers = ["io.github.minigold92.quietclerk"]`를 넣되, **ad-hoc에서는 Team ID가 없어 BTM이 무시하는 것을 실측했다**. QuietClerk 이름으로 표시된다는 약속이나 `SMAppService.requiresApproval` 상태를 제공하지 않는다. System Settings에서 사용자가 끈 백그라운드 항목의 재승인은 사람의 일이다.
+- Rust는 plist를 쓰거나 `bootstrap`/`bootout`을 하지 않는다. Python 설치기 하나가 잠금·등록·해제·실패 복구·상태 인증을 소유한다. Rust가 직접 하는 launchctl은 설치 기록이 없을 때의 읽기 전용 `print`뿐이다.
+
+### 6.2 A1이 쓰는 함수·명령·설치 기록
+
+- Rust 공개 함수(`quietclerk_app::login_service`):
+  `status(home: &Path)`, `register(home: &Path)`, `unregister(home: &Path)` →
+  `Result<ServiceStatus, String>`. 상태는 `{manager: Option<String>, registered: bool, login_enabled: bool}`.
+  `manager`는 `"app"`, `"cli"`, 미설치 `None`이다. UI 스레드 밖에서 부른다.
+- 앱 첫 설치는 기존 명령에 **`install --app-install`**을 더한다(Python API: `install.run(app_install=True, ...)`). `--settings`, `--support`, `--root`, `--source` 의미·환경 생성·모델 검사·rollback은 기존과 같다. S1 스파이크는 모델을 설치하지 않고 HTTP 의존성만 갖춘 실제 엔진으로 생명주기만 시험했다.
+- 이후 Rust는 설치된 Python으로 `-m quietclerk.cli --support <support> login-service status|register|unregister`를 인자 배열로 실행하고 stdout JSON을 읽는다. 토큰은 인자·결과에 없다. stderr 실패 이유를 반환한다. 개발자용 숨은 앱 인자는 없다. `examples/login_service_probe.rs`는 앱에 링크하지 않는 명시적 실측 진입점이다.
+- 설치 기록은 `<support>/engine-installation.json`, 소유자=현재 사용자·일반 파일·`0600`·최종 심볼릭 링크 거부다. schema 1의 필수 필드:
+
+  ```json
+  {"schema":1,"manager":"app","label":"local.quietclerk.serve",
+   "python":"/absolute/root/.venvs/id/bin/python","root":"/absolute/root",
+   "settings":"/absolute/root/settings.toml","support":"/absolute/support",
+   "plist":"/absolute/home/Library/LaunchAgents/local.quietclerk.serve.plist",
+   "plist_sha256":"sha256-of-plist"}
+  ```
+
+  경로는 모두 절대 경로다. 앱 번들 경로·버전·헬퍼·엔진 모드 인자는 **없다**. `<support>/service.plist`는 재등록용 원본이다. 설치/엔진 update 트랜잭션이 이 두 파일도 함께 갱신하고 실패 시 정확한 바이트로 되돌린다. 설정·데이터의 별도 원본이 아니다.
+- `register`: 소유권 확인 → `upgrade.lock` → 실행 잠금으로 수동 serve와 충돌 거부 → 원본 plist 복원 → bootstrap/start → **신선한 bootstrap으로 인증 `/api/status`** 확인. 실패하면 새 등록을 내리고 이전 plist 존재/내용을 복구한다.
+- `unregister`: 같은 유지보수 잠금 → bootout → `serve.lock`·`tick.lock` 회수 확인 → LaunchAgents plist 삭제. 앱 소유 기록·재등록 원본·사용자 데이터는 보존한다. 엔진 update는 로그인 항목이 켜진 상태에서 기존 계약대로 수행한다.
+
+### 6.3 CLI 공존
+
+1. 앱 소유 기록이 없는데 기존 plist 또는 launchd label이 있으면 `"cli"`다. 앱은 register/unregister 요청에서도 **읽기만 하고 그대로 재사용**한다. 기록도 없고 둘 다 없으면 미설치다.
+2. 앱 기록이 있어도 실제 plist가 저장 원본과 달라졌거나, plist 없이 다른 등록이 남았으면 CLI/사용자 소유가 우선한다. 조용히 덮어쓰거나 두 번째 label을 만들지 않는다.
+3. CLI 설치에는 `--app-install`을 주지 않는다. 기존 서비스 명령·업그레이드·이전 venv 보존·doctor 경로를 바꾸지 않는다. 앱 소유 설치의 engine update만 기록·재등록 원본을 같은 트랜잭션에 포함한다.
+
+### 6.4 후보별 실측
+
+이 Mac의 실제 로그인 세션·실제 launchd·ad-hoc 시험 앱. 화면 클릭·키 입력, 로그아웃·재부팅, 운영 장비 접속은 하지 않았다. A의 Swift 스파이크와 Rust/objc2 스파이크는 제품에서 제거했다.
+
+| 측정 | A: SMAppService.agent | B: 앱 실행 파일 런처 | **선택 B 변형: venv Python 직접** |
+|---|---|---|---|
+| 등록·승인 | 최초 `status=Enabled(1)`, 승인 조작 없이 성공. 이후 동일 식별자 재설치에서 등록 API 성공인데 spawn 실패도 발생 | 실제 bootstrap 성공, BTM `enabled, allowed` | Rust 함수→Python 설치기→실제 bootstrap·인증 성공. SM 상태 API는 사용 안 함 |
+| 이름·BTM | 시스템 로그 advisory: `QuietClerk-S1Probe`. launchd에 parent bundle·BTM UUID·`LWCR.reqs.cdhash` 존재 | BTM `name=QuietClerk-S1Probe`; **Team ID 없음, AssociatedBundleIdentifiers 무시** 오류 로그 | BTM `appURL=(null)`, `legacy agent`, Python 경로. 동일 label의 앞선 A 기록 때문에 이 세션 이름은 `quietclerk-app`으로 남음. 깨끗한 계정의 표시 이름은 미확인 |
+| bootstrap·인증·앱 종료 | 실제 bootstrap·인증 성공, 등록 앱 프로세스 종료 뒤 엔진 유지 | 실제 bootstrap·인증 성공, 앱 프로세스 없이 유지 | PID 7638 인증 성공; 시험 앱 시작·종료 후 같은 엔진 PID 유지 |
+| SIGKILL·KeepAlive | 81440→84182, 인증 성공 | 85438→85629, 인증 성공 | 7638→7715, 인증 성공 |
+| 같은 경로 다른 빌드 | 단순 덮어쓰기 뒤 새 기동 실패. Swift 버전 증가+명시 재등록 1회는 성공했지만 Rust 재등록은 API 성공 뒤 **Launch Constraint Violation / Constraint not matched**로 실패. 안정 경로로 채택 못 함 | 85629→85813, 인증 성공 | 덮어쓴 뒤 같은 엔진 PID 유지; SIGKILL 뒤 7715→7932 인증 성공. 재등록 불필요 |
+| 다른 폴더로 이동 | BTM 부모 URL 갱신은 관측. 업데이트 실패와 겹친 엔진 재기동은 실패하여 독립 이동 성공은 미확인 | 원래 절대 앱 경로를 찾아 spawn 실패 | 이동 후 SIGKILL 7932→8132, 인증 성공 |
+| CLI 공존 | 폐기 후보의 별도 native 공존 실행은 미확인. 선택 구현의 공통 label 선감지는 아래 실제 확인 | 별도 후보 공존 실행은 미확인 | 실제 CLI PID 8162가 status/register/unregister 모두 동일하게 유지, `"cli"` 반환, 두 번째 서비스 없음 |
+| 해제·복구 | native status 0, launchd service 없음 | bootout 뒤 service·plist 없음 | Rust unregister→Python bootout·잠금 회수→service·plist 없음. 재등록 원본/데이터는 정상적으로 보존 후 시험 정리 |
+
+**결정 근거:** B 원안은 앱 이동에 깨지고, A는 ad-hoc 새 cdhash에서 실행 제약이 불안정하다. 앱을 런처로 삼지 않으면 기존 검증된 Python 설치·update·rollback을 그대로 재사용하면서 앱 업데이트·이동을 엔진과 분리할 수 있다. 이름 표시의 한계는 베타의 명시적 제한이다.
+
+- 재현: `scripts/probe_login_service.py --bundle <signed.app> --python <installed-venv/bin/python> --rust-probe <built-example> --replacement <different-Rust-build>`; 실행은 사용자 엔진 경로가 비어 있을 때만 허용한다. 실제 모델·녹음 처리는 이 실측 범위가 아니다.
+- 정리: 시험 앱은 `~/Applications`에만 만들고 `lsregister -u` 후 삭제했다. 기본 root는 만들지 않았고, 기본 support·LaunchAgents plist·서비스 등록은 시험 뒤 없게 복구했다. `/Applications/QuietClerk.app`은 건드리지 않았다. BTM의 비활성 이력/label enable override는 macOS DB에 남을 수 있다. 전체 로그인 항목을 지우는 `sfltool resetbtm`은 하지 않는다. 단일 BTM 이력 삭제용 공개 명령은 확인하지 못했으며, 사용자는 시스템 설정 > 일반 > 로그인 항목에서 시험 항목이 보이면 끄고 확인할 수 있다(실행 파일·서비스는 이미 없음).
+- **로그인 자동 시작은 launchd RunAtLoad/KeepAlive와 BTM 기록으로만 확인했다.** 실제 재로그인·재부팅은 미확인. A1 설치 후 다음 재부팅 때 앱을 열기 전에 `launchctl print gui/$(id -u)/local.quietclerk.serve`의 `state = running`과 `quietclerk status`를 확인한다.
+- **P1 재평가 조건:** Developer ID로 서명한 동일 bundle ID의 두 버전으로 A 등록→인증→앱 종료→kill→번들 교체→자동 재등록→이동→CLI 공존→해제를 다시 실측한다. 처리 중이면 인증 상태의 `current_job`이 없어질 때까지 기다리고, 실패 이유를 UI에 표시·다음 시작 재시도하는 설계를 그때 함께 구현한다. ad-hoc의 `LWCR.cdhash` 결과를 Developer ID 동작으로 일반화하지 않는다. API 근거: [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice), [objc2-service-management 설명](https://docs.rs/objc2-service-management/latest/objc2_service_management/struct.SMAppService.html).

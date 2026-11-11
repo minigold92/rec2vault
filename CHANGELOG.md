@@ -1,5 +1,15 @@
 # Changelog / 변경 기록
 
+## Unreleased
+
+### 한국어
+
+- 앱과 CLI가 같은 로그인 서비스를 사용하도록 등록·해제·상태 API를 추가했습니다. 엔진은 앱과 분리된 Python 서비스로 실행되어 앱 종료·업데이트·이동 중에도 유지됩니다. 첫 설치 화면·서비스 메뉴 연결은 아직 포함하지 않습니다.
+
+### English
+
+- Added a shared login-service lifecycle API for the app and CLI. The Python engine runs independently of the app, surviving app exit, replacement and relocation. First-run installation screens and menu controls are not included yet.
+
 ## 0.0.2
 
 ### 한국어

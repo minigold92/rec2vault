@@ -536,6 +536,15 @@ class Provider(Protocol):
 6. 노트 이행은 화면에서 동의를 받아 따로 한다(7.5절).
 7. 첫 운영 업그레이드는 Mac mini의 DB·설정·노트 사본으로 같은 절차를 먼저 끝까지 해 본 뒤에만.
 
+앱 설치도 같은 서비스·같은 Python 실행 경로를 쓴다(S1, 2026-11-11). `install --app-install`만
+앱 소유 `engine-installation.json`과 재등록 원본 `service.plist`를 support에 추가하고,
+plist에 `AssociatedBundleIdentifiers`를 넣는다(ad-hoc에서는 BTM이 무시할 수 있음).
+engine update/rollback은 두 기록도 기존 plist와 같은 트랜잭션으로 갱신/복구한다.
+`login-service status|register|unregister`는 JSON으로 앱 소유·등록·로그인 설정 상태를 돌려준다.
+등록은 잠금·bootstrap/start·신선한 인증 상태 확인, 해제는 bootout·실행 잠금 회수·LaunchAgents
+plist 삭제다. 앱 소유 기록 없는 기존 CLI 설치는 변경하지 않는다. Rust는 이 명령을 부르기만 하며,
+별도 plist/launchctl 쓰기 구현을 두지 않는다. 상세 파일 형식·공존·실측은 `contracts-app.md` 6절.
+
 ### 10.3 워커 프로토콜
 
 - 인자: `--run-settings <실행 설정 JSON 경로>`(읽기 전용) `--stage <이름>` `--in <입력>`… `--out <출력>`. 워커는 환경 변수로 설정을 다시 합성하지 않는다.
