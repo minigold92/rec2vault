@@ -22,7 +22,7 @@ from . import install
 
 
 def stage(ko, en):
-    print(json.dumps({'ko': ko, 'en': en}), flush=True)
+    print(json.dumps({'ko': ko, 'en': en}, ensure_ascii=False), flush=True)
 
 
 def safe_path(path):
@@ -261,7 +261,7 @@ def main():
     try:
         reconcile(args.resources, args.tools, consent=args.consent)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
-        print(json.dumps({'error': str(exc).splitlines()[0]}), flush=True)
+        print(json.dumps({'error': str(exc).splitlines()[0]}, ensure_ascii=False), flush=True)
         return 1
     return 0
 

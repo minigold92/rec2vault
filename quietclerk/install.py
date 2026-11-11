@@ -477,15 +477,18 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
     paths = layout(root, upgrading=upgrading, **locations)
     env = dict(os.environ if environ is None else environ)
     labels = legacy_services(paths, legacy_labels, env)
-    plan = [f'Adopt existing root: {paths.root}' if upgrading else f'Create root: {paths.root}',
-            'Unload legacy labels: ' + ', '.join(labels),
-            'Acquire tick.lock; reject surviving legacy children',
-            'Create a fresh venv; install dependencies; verify models',
-            f'Migrate settings to {paths.settings}',
-            'Migrate state.sqlite3 with migrate_v1' if upgrading else 'Initialize schema v2',
-            f'Register/start {LABEL}; verify authenticated status',
-            'On failure: stop new service; restore DB/config; re-register old services',
-            'Keep legacy service files and notes unchanged']
+    plan = [f'Adopt existing root: {paths.root}' if upgrading else f'Create root: {paths.root}']
+    if upgrading:
+        plan += ['Unload legacy labels: ' + ', '.join(labels),
+                 'Acquire tick.lock; reject surviving legacy children']
+    plan += ['Create a fresh venv; install dependencies; verify models',
+             f'Migrate settings to {paths.settings}' if upgrading else f'Write settings to {paths.settings}',
+             'Migrate state.sqlite3 with migrate_v1' if upgrading else 'Initialize schema v2',
+             f'Register/start {LABEL}; verify authenticated status',
+             'On failure: stop new service; restore DB/config; re-register old services'
+             if upgrading else 'On failure: stop new service; remove what this install created']
+    if upgrading:
+        plan.append('Keep legacy service files and notes unchanged')
     if dry_run:
         return '\n'.join(plan)
     adapter = adapter or MacAdapter()
@@ -592,7 +595,8 @@ def run(*, upgrading=False, root=None, dry_run=False, adapter=None, legacy_label
             if failures:
                 raise InstallError(f'old service restore failed: {failures}; original: {error}') from error
             raise
-    return '\n'.join(plan) + '\nService is healthy. Notes require separate consent to migrate.\n' + link_cli(paths, venv)
+    done = 'Service is healthy.' + (' Notes require separate consent to migrate.' if upgrading else '')
+    return '\n'.join(plan) + '\n' + done + '\n' + link_cli(paths, venv)
 
 
 def _require_v2(paths):

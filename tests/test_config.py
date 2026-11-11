@@ -86,6 +86,22 @@ def test_old_environment_never_aliases(tmp_path):
     assert settings.get('min_duration_sec') == 300
 
 
+@pytest.mark.parametrize('listed, posix, expected', [
+    ('(\n    "ko-KR",\n    "en-KR"\n)\n', ('en_US', 'UTF-8'), 'ko'),  # app/launchd child: no LANG
+    ('(\n    "en-KR",\n    ko\n)\n', ('ko_KR', 'UTF-8'), 'en'),       # the Mac's first language wins
+    (None, ('ko_KR', 'UTF-8'), 'ko'),                                  # no macOS preference: locale
+    (None, (None, None), 'en'),
+])
+def test_system_language_prefers_macos_language_order(monkeypatch, listed, posix, expected):
+    def run(*args, **kwargs):
+        if listed is None:
+            raise FileNotFoundError('defaults')
+        return config.subprocess.CompletedProcess(args, 0, listed, '')
+    monkeypatch.setattr(config.subprocess, 'run', run)
+    monkeypatch.setattr(config.locale, 'getlocale', lambda *args: posix)
+    assert config.system_language() == expected
+
+
 def test_installation_defaults_survive_reload_clock_and_locale_change(tmp_path, monkeypatch):
     class FirstClock(datetime):
         @classmethod
@@ -99,10 +115,10 @@ def test_installation_defaults_survive_reload_clock_and_locale_change(tmp_path, 
 
     env = {'QC_ROOT': str(tmp_path)}
     monkeypatch.setattr(config, 'datetime', FirstClock)
-    monkeypatch.setattr(config.locale, 'getlocale', lambda *args: ('ko_KR', 'UTF-8'))
+    monkeypatch.setattr(config, 'system_language', lambda: 'ko')
     first = config.load(tmp_path / 'settings.toml', env)
     monkeypatch.setattr(config, 'datetime', LaterClock)
-    monkeypatch.setattr(config.locale, 'getlocale', lambda *args: ('en_US', 'UTF-8'))
+    monkeypatch.setattr(config, 'system_language', lambda: 'en')
     def no_new_socket():
         raise AssertionError('installation port must not be reallocated')
     monkeypatch.setattr(config.socket, 'socket', no_new_socket)

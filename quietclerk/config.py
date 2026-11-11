@@ -11,7 +11,9 @@ import fcntl
 import json
 import locale
 import os
+import re
 import socket
+import subprocess
 import tempfile
 import tomllib
 import unicodedata
@@ -164,6 +166,22 @@ class Settings:
         return Path(self._values['root'])
 
 
+def system_language():
+    """'ko' or 'en' from the user's macOS language order, else the POSIX locale.
+
+    The app and launchd children run without LANG, so the POSIX locale alone reports English on
+    a Korean Mac (seen on the first real app install, 2026-11-11).
+    """
+    try:
+        listed = subprocess.run(['/usr/bin/defaults', 'read', '-g', 'AppleLanguages'],
+                                capture_output=True, text=True, timeout=5, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        listed = ''
+    first = re.search(r'[A-Za-z]{2,3}', listed.partition('(')[2])
+    code = first.group(0) if first else (locale.getlocale()[0] or '')
+    return 'ko' if code.lower().startswith('ko') else 'en'
+
+
 def _installation_defaults(root):
     root.mkdir(parents=True, exist_ok=True)
     path = root / 'installation.json'
@@ -176,7 +194,7 @@ def _installation_defaults(root):
                         ('since', 'server.port', 'language.default', 'ui.language')}
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 raise SettingsError('installation', 'invalid persisted defaults') from exc
-        language = 'ko' if (locale.getlocale()[0] or '').startswith('ko') else 'en'
+        language = system_language()
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
