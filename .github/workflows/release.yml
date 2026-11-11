@@ -43,7 +43,26 @@ jobs:
             const section = sections.find(s => s.split('\n')[0].trim() === version);
             if (!section) throw new Error(`Missing CHANGELOG section: ${version}`);
             return section.slice(section.indexOf('\n') + 1).trim();
-      - uses: tauri-apps/tauri-action@v0
+      # hdiutil on hosted macOS runners sometimes fails with "Resource busy" (v0.0.4, 2026-11-11).
+      # The build fails before any release is created, so one retry of the same step is safe.
+      - id: build
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: QuietClerk ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.result }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true
+          args: --target aarch64-apple-darwin --bundles app,dmg
+      - if: steps.build.outcome == 'failure'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
