@@ -1,5 +1,17 @@
 # Changelog / 변경 기록
 
+## 0.0.6
+
+### 한국어
+
+- 앱 업데이트 직후 창에 "Run quietclerk open to sign in."만 뜨던 문제를 고쳤습니다. 메뉴 막대 상태를 읽을 때 한 번만 쓸 수 있는 로그인 토큰을 써 버려, 동시에 열리던 창이 로그인하지 못했습니다. 이제 메뉴 상태는 토큰 없이 서비스 등록 상태와 설치된 엔진 버전으로 표시합니다.
+- 다시 여는 방법 안내에 메뉴 막대 아이콘의 ‘QuietClerk 열기’를 함께 적었습니다(이전에는 터미널 명령만 안내).
+
+### English
+
+- Fixed the window showing only "Run quietclerk open to sign in." right after an app update. Reading the menu bar status spent the single-use sign-in token, so a window opening at the same time could not sign in. The menu now shows the service registration and the installed engine version without a token.
+- Reopen hints now mention Open QuietClerk in the menu bar icon, not only the Terminal command.
+
 ## 0.0.5
 
 ### 한국어

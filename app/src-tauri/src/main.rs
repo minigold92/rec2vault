@@ -41,11 +41,17 @@ fn refresh_engine_status(app: &tauri::AppHandle) {
     }
     let app = app.clone();
     std::thread::spawn(move || {
-        let status = app
-            .path()
-            .home_dir()
-            .ok()
-            .and_then(|home| quietclerk_app::app_install::authenticated_status(&home).ok());
+        // Registration and the package version only: no bootstrap token is spent here,
+        // so a window opening at the same moment keeps a valid token.
+        let status = app.path().home_dir().ok().and_then(|home| {
+            let service = quietclerk_app::login_service::status(&home).ok()?;
+            service.registered.then(|| {
+                serde_json::json!({
+                    "engine_version": quietclerk_app::login_service::engine_version(&home)
+                        .unwrap_or_default()
+                })
+            })
+        });
         let shell = app.state::<Shell>();
         let label = menu_status::engine_label(shell.korean, status.as_ref());
         let _ = shell.engine_status.set_text(label);

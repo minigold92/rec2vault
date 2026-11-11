@@ -703,7 +703,7 @@ export async function mount({content}) {
         state.server.restart_required ? banner('info', 'i', L('포트를 바꿨어요. 엔진을 다시 시작하면 새 주소로 열려요.', 'The port was changed. After the engine restarts it opens at the new address.')) : null,
         field({id: 'f-remote', key: 'remote', label: L('다른 기기에서 접속', 'Access from other devices'), help: L('지금 버전은 이 Mac에서만 열려요.', 'This version opens only on this Mac.'),
           control: chip('idle', '—', L('꺼짐 · 설정 없음', 'Off · no setting'))}),
-        field({id: 'f-out2', key: 'logout', label: L('이 브라우저에서 로그아웃', 'Sign out of this browser'), help: L('다시 열려면 터미널에서 quietclerk open을 실행해요.', 'Run quietclerk open in Terminal to come back.'),
+        field({id: 'f-out2', key: 'logout', label: L('이 브라우저에서 로그아웃', 'Sign out of this browser'), help: L('다시 열려면 메뉴 막대 아이콘에서 ‘QuietClerk 열기’를 누르거나 터미널에서 quietclerk open을 실행해요.', 'To come back, choose Open QuietClerk from the menu bar icon or run quietclerk open in Terminal.'),
           control: btn({small: true, engine: true, label: L('로그아웃', 'Sign out'), on: {click: logout}})})),
       section('s-version', L('버전', 'Version'),
         field({id: 'f-engine-version', key: 'engine_version', label: L('엔진 버전', 'Engine version'),

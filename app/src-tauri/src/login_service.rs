@@ -140,6 +140,37 @@ pub fn unregister(home: &Path) -> Result<ServiceStatus, String> {
     invoke(home, Action::Unregister)
 }
 
+/// Installed engine version for the menu, read from the app-managed venv's package metadata.
+/// It never touches bootstrap.json: that token is single-use, and spending it here raced the
+/// window opening after an engine update (0.0.5, 2026-11-11). CLI installs return None.
+pub fn engine_version(home: &Path) -> Option<String> {
+    let support = support(home);
+    let installation = Installation::read(&support.join(RECORD_NAME)).ok()?;
+    installation.validate(&support).ok()?;
+    let lib = installation.python.parent()?.parent()?.join("lib");
+    let site = std::fs::read_dir(lib)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path().join("site-packages"))
+        .find(|path| path.is_dir())?;
+    version_from_dist_info(
+        std::fs::read_dir(site)
+            .ok()?
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok()),
+    )
+}
+
+fn version_from_dist_info(names: impl Iterator<Item = String>) -> Option<String> {
+    names
+        .filter_map(|name| {
+            name.strip_prefix("quietclerk-")?
+                .strip_suffix(".dist-info")
+                .map(str::to_string)
+        })
+        .find(|version| !version.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +183,16 @@ mod tests {
             );
         }
         assert_eq!(existing_service(false, false).manager, None);
+    }
+    #[test]
+    fn engine_version_comes_from_the_package_metadata_folder() {
+        let names = ["numpy-2.1.0.dist-info", "quietclerk", "quietclerk-0.1.3.dist-info"];
+        assert_eq!(
+            version_from_dist_info(names.iter().map(|s| s.to_string())).as_deref(),
+            Some("0.1.3")
+        );
+        let none = ["quietclerk", "quietclerk_app-1.0.dist-info"];
+        assert_eq!(version_from_dist_info(none.iter().map(|s| s.to_string())), None);
     }
     #[test]
     fn lifecycle_uses_literal_engine_arguments_without_shell() {

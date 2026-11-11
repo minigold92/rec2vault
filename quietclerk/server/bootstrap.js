@@ -22,6 +22,6 @@
     window.dispatchEvent(new Event('quietclerk:authenticated'));
     location.replace(fragment.get('next') === 'setup' ? '/setup/1' : '/home');
   } catch (_) {
-    if (target) target.textContent = 'Run quietclerk open to sign in.';
+    if (target) target.textContent = 'Choose Open QuietClerk from the menu bar icon, or run quietclerk open, to sign in.';
   }
 })();

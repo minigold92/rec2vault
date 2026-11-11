@@ -97,7 +97,7 @@ export function offlineBanner() {
 function authBanner() {
   return banner('err', '!', [
     h('b', null, L('로그인이 끝났어요.', 'Your session ended.')), ' ',
-    L('터미널에서 ', 'Run '), h('code', null, 'quietclerk open'), L('을 실행하면 다시 열려요.', ' in Terminal to open it again.'), ' ', code('401'),
+    L('메뉴 막대 아이콘에서 ‘QuietClerk 열기’를 누르거나 터미널에서 ', 'Choose Open QuietClerk from the menu bar icon, or run '), h('code', null, 'quietclerk open'), L('을 실행하면 다시 열려요.', ' in Terminal, to open it again.'), ' ', code('401'),
   ], [btn({small: true, label: L('다시 확인', 'Check again'), on: {click: reconnect}})]);
 }
 
