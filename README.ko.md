@@ -184,6 +184,23 @@ rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
 ```
 </details>
 
+<details>
+<summary><b>메뉴 막대 앱 (0.0.x, 선택)</b></summary>
+
+[Releases](https://github.com/minigold92/rec2vault/releases)에 실행 중인 엔진 화면을 열고 스스로
+업데이트하는 작은 메뉴 막대 앱이 있습니다. 아직 엔진을 설치하지는 않으니 위 명령으로 먼저 설치하세요.
+
+0.0.x는 Apple 개발자 계정 서명이 없어서 macOS가 처음 열 때 막습니다.
+
+1. 디스크 이미지에서 **QuietClerk**를 **Applications** 폴더로 끌어다 놓고 엽니다.
+2. "확인할 수 없음" 창이 뜨면 **완료**를 누릅니다. **휴지통으로 이동**을 누르면 앱이 지워집니다.
+3. **시스템 설정 → 개인정보 보호 및 보안**을 아래로 내려 "QuietClerk이(가) 차단되었습니다" 옆의
+   **그래도 열기**를 누르고 Mac 암호를 입력합니다.
+4. QuietClerk를 다시 열고 **열기**를 누릅니다.
+
+그다음 버전은 앱에서 설치합니다(메뉴 막대 아이콘 → **업데이트 확인**). 이 단계는 다시 하지 않습니다.
+</details>
+
 ## AI 에이전트에서 쓰기
 
 QuietClerk는 질문 엔진이나 MCP 서버 대신 **읽기 전용 CLI**를 제공합니다.

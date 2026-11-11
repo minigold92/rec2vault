@@ -192,6 +192,24 @@ rm -rf ~/QuietClerk "$HOME/Library/Application Support/QuietClerk"
 ```
 </details>
 
+<details>
+<summary><b>Menu bar app (0.0.x, optional)</b></summary>
+
+The [Releases](https://github.com/minigold92/rec2vault/releases) page has a small menu bar app that
+opens the running engine's screens and updates itself. It does not install the engine yet; use the
+commands above first.
+
+0.0.x builds are not signed by an Apple developer account, so macOS blocks the first open:
+
+1. Drag **QuietClerk** from the disk image to **Applications** and open it.
+2. When macOS says it cannot verify the app, press **Done**. Do not press **Move to Trash**.
+3. Open **System Settings → Privacy & Security**, scroll down and press **Open Anyway** next to
+   "QuietClerk was blocked", then enter your Mac password.
+4. Open QuietClerk again and press **Open**.
+
+Later versions install from the app (menu bar icon → **Check for updates**) without this step.
+</details>
+
 ## Using from AI agents
 
 QuietClerk supplies **read-only meeting data**, not a question-answering engine or MCP

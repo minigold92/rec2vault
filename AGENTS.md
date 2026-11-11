@@ -29,6 +29,9 @@ private repo at `~/Projects/side/rec`. Some design documents link to files that 
 - **Both languages.** Screen strings use `L('한국어', 'English')`; prompts and note text have `ko` and `en` paths.
 - **A bug fix starts with a test that fails on the old code.** Run the full suite once before committing.
 - **Done means executed.** Report each item as real input / assumed (tests, fakes) / not verified.
+- **No dev builds during user tests.** A local build has the same bundle identifier, so macOS may open it
+  instead of the downloaded app. Before asking the maintainer to test a release, quit it, unregister it
+  (`lsregister -u <path>`) and delete `app/src-tauri/target/*/release/bundle`.
 
 ## Local release gate
 
