@@ -738,6 +738,20 @@ def test_settings_update_toggle_and_check(harness, lang):
     assert {post['csrf'] for post in result['posts']} == {'csrf-1'} and {post['path'] for post in result['posts']} == {'/api/update/check'}
 
 
+@needs_node
+@pytest.mark.parametrize('lang', ['ko', 'en'])
+@pytest.mark.parametrize('version', ['0.1.2', None])
+@pytest.mark.parametrize('method', ['app', 'cli'])
+def test_settings_engine_version_and_unknown_fallback(harness, lang, version, method):
+    identity = {'engine_version': version, 'installation_method': method,
+                'last_updated_at': '2026-11-11T00:00:00+00:00' if version else None}
+    seen = run_ui(harness, 'engineVersion', lang=lang, settings=word_settings(lang), identity=identity)
+    assert seen['version'] == (version or ('확인할 수 없음' if lang == 'ko' else 'Unavailable'))
+    assert seen['method'] == ('CLI' if method == 'cli' else ('앱' if lang == 'ko' else 'App'))
+    assert seen['updated'] == identity['last_updated_at']
+    assert ('앱 버전은 Mac 메뉴 막대' if lang == 'ko' else 'Find the app version') in seen['text']
+
+
 # ---- the word list (settings), its consent box (settings and setup step 4), the review codes and sent fields (minutes)
 # These run the real settings, setup-engines and note modules in node like the update tests above. What the server says
 # (the 400 bodies, the note payload, the review codes) is taken from the real server and render.py inside the same test.
@@ -1775,7 +1789,7 @@ const consentView = () => qa('[data-key="providers.consent"] label.check').map((
 const engineLines = () => qa('#providers .provider-row').map(text);
 
 // The settings screen with the word list. `w.fail` is a {status, body} the next PUT answers with (once).
-async function openSettings({lang, settings, providers = []}) {
+async function openSettings({lang, settings, providers = [], identity}) {
   const w = await boot({lang, screen: 'settings', first: BODIES.current});
   w.saved = {...settings};
   w.fail = null;
@@ -1787,6 +1801,7 @@ async function openSettings({lang, settings, providers = []}) {
     return answer();
   };
   routes['GET /api/providers'] = () => reply(200, {items: providers});
+  if (identity) routes['GET /api/status'] = () => reply(200, identity);
   routes['GET /api/notes/migration'] = () => reply(200, {preview: {entries: [], conflicts: []}, migrated: false, task: null});
   await (await load('screens/settings.js')).mount(w.shell);
   await settle();
@@ -1795,6 +1810,11 @@ async function openSettings({lang, settings, providers = []}) {
 const save = async () => { saveButton().click(); await settle(); };
 
 const scenarios = {
+  async engineVersion(params) {
+    await openSettings(params);
+    return {version: text(q('#f-engine-version')), method: text(q('#f-install-method')),
+      updated: text(q('#f-last-update')), text: text(q('#s-version'))};
+  },
   // Every state in turn, as the stream announces it.
   async bands({lang}) {
     const w = await boot({lang});

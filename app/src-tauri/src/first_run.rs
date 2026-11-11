@@ -134,6 +134,7 @@ pub fn start(app: &tauri::AppHandle, consent: bool) {
                     "Engine running",
                 );
                 app.state::<FirstRun>().ready.store(true, Ordering::SeqCst);
+                crate::refresh_engine_status(&app);
                 if let Err(error) = crate::open_window(&app) {
                     crate::show_error(&app, error);
                 }

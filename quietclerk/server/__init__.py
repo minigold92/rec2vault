@@ -29,6 +29,7 @@ import secrets
 import time
 from concurrent.futures import wait
 from contextlib import asynccontextmanager, closing
+from importlib import metadata
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -38,7 +39,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from .. import artifacts, backfill, config, intake, providers, selfupdate, store, store_ops
+from .. import artifacts, backfill, config, intake, install, providers, selfupdate, store, store_ops
 from ..notes import NoteConflict, migration
 from . import integrations
 from .. import overrides
@@ -102,6 +103,21 @@ class Security:
         if response:
             return await response(scope, receive, secure_send)
         await self.app(scope, receive, secure_send)
+
+
+def engine_identity(runtime):
+    try:
+        version = metadata.version('quietclerk')
+    except metadata.PackageNotFoundError:
+        version = None
+    try:
+        install.read_app_installation(runtime.support / install.APP_RECORD)
+        method = 'app'
+    except install.InstallError:
+        method = 'cli'
+    update = runtime.updates.snapshot()
+    return {'engine_version': version, 'installation_method': method,
+            'last_updated_at': update.get('finished_at') if update['state'] == 'done' else None}
 
 
 def status_snapshot(runtime):
@@ -517,7 +533,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     response.delete_cookie(COOKIE, path='/')
                     return response
                 if path == '/api/status' and method == 'GET':
-                    return JSONResponse(status_snapshot(runtime) | {
+                    return JSONResponse(status_snapshot(runtime) | engine_identity(runtime) | {
                         'providers': integrations.provider_status(settings, provider_registry),
                         'sync': sync_status(settings)})
                 if path == '/api/update' and method == 'GET':

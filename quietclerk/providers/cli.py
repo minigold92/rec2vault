@@ -17,6 +17,19 @@ def environment():
             if key in os.environ}
 
 
+def executable(name):
+    """Respect PATH first, then known per-user package-manager bin directories."""
+    found = shutil.which(name, path=environment().get('PATH', ''))
+    if found:
+        return found
+    home = Path.home()
+    for directory in ('.local/bin', '.bun/bin', '.npm-global/bin', '.volta/bin', '.cargo/bin'):
+        found = shutil.which(name, path=str(home / directory))
+        if found:
+            return found
+    return None
+
+
 def failure(message):
     text = message.lower()
     if any(s in text for s in ('not logged in', 'unauthorized', 'authentication', '401', 'login required')):
@@ -39,7 +52,7 @@ class CLI:
 
     @serial_call
     def run(self, args, *, prompt=None, timeout=15, cwd=None):
-        exe = shutil.which(self.name, path=environment().get('PATH', ''))
+        exe = executable(self.name)
         if not exe:
             raise NotInstalled(self.name)
         try:

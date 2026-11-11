@@ -343,6 +343,36 @@ def test_response_schemas_for_local_endpoints(api, monkeypatch, tmp_path):
         Draft202012Validator(schema | {'$ref': '#/$defs/' + name}).validate(response.json())
 
 
+@pytest.mark.parametrize('version', ['0.1.2', None])
+@pytest.mark.parametrize('app_install', [False, True])
+def test_authenticated_status_engine_identity(api, monkeypatch, version, app_install):
+    from quietclerk import server
+    client, app, clock, base = api
+    def package_version(name):
+        assert name == 'quietclerk'
+        if version is None:
+            raise server.metadata.PackageNotFoundError(name)
+        return version
+    monkeypatch.setattr(server.metadata, 'version', package_version)
+    support = app.state.runtime.support
+    if app_install:
+        record = {'schema': 1, 'manager': 'app', 'label': 'local.quietclerk.serve',
+                  **{key: str(support / key) for key in ('python', 'settings', 'support', 'root', 'plist')}}
+        server.install._atomic(support / server.install.APP_RECORD, json.dumps(record).encode())
+    assert client.get('/api/status').status_code == 401
+    login(client, app, base)
+    status = client.get('/api/status').json()
+    assert status['engine_version'] == version
+    assert status['installation_method'] == ('app' if app_install else 'cli')
+    assert status['last_updated_at'] is None
+    monkeypatch.setattr(app.state.runtime.updates, 'snapshot',
+                        lambda: {'state': 'done', 'behind': 0, 'finished_at': '2026-11-11T00:00:00+00:00'})
+    assert client.get('/api/status').json()['last_updated_at'] == '2026-11-11T00:00:00+00:00'
+    monkeypatch.setattr(app.state.runtime.updates, 'snapshot',
+                        lambda: {'state': 'failed', 'behind': 0, 'finished_at': '2026-11-11T00:00:00+00:00'})
+    assert client.get('/api/status').json()['last_updated_at'] is None
+
+
 class IdleExecutor:
     def __init__(self, *args):
         pass

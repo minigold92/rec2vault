@@ -151,6 +151,10 @@ fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|e| e.to_string())
 }
 pub fn authenticated(home: &Path) -> Result<(), String> {
+    authenticated_status(home).map(|_| ())
+}
+
+pub fn authenticated_status(home: &Path) -> Result<serde_json::Value, String> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -196,9 +200,7 @@ pub fn authenticated(home: &Path) -> Result<(), String> {
         .send()
         .and_then(|r| r.error_for_status())
         .map_err(|_| "engine logout failed")?;
-    status
-        .map(|_| ())
-        .map_err(|_| "엔진 상태 인증 실패 / Engine status authentication failed".into())
+    status.map_err(|_| "엔진 상태 인증 실패 / Engine status authentication failed".into())
 }
 // Before Python exists, allow ~2 GB for the managed Python/engine environments
 // plus the engine contract's 2 GB working reserve. Only Python sizes models.
@@ -390,7 +392,10 @@ mod tests {
             &AtomicI32::new(0),
         )
         .unwrap_err();
-        assert_eq!(error, "필요 3 GB, 남은 2 GB / requires 3 GB, available 2 GB");
+        assert_eq!(
+            error,
+            "필요 3 GB, 남은 2 GB / requires 3 GB, available 2 GB"
+        );
     }
     #[test]
     fn engine_space_does_not_reserve_model_downloads() {

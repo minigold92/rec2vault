@@ -137,6 +137,52 @@ def executable(tmp_path, monkeypatch, name, body):
     monkeypatch.setenv('SHOULD_NOT_LEAK', 'secret')
 
 
+
+@pytest.mark.parametrize('provider', [Omp, Codex, Claude])
+@pytest.mark.parametrize('directory', ['.local/bin', '.bun/bin', '.npm-global/bin', '.volta/bin', '.cargo/bin'])
+def test_user_installed_cli_detected_without_launchd_path(tmp_path, monkeypatch, provider, directory):
+    home = tmp_path / 'home'
+    target = home / directory
+    target.mkdir(parents=True)
+    executable(target, monkeypatch, provider.name, 'print("18.18.3")')
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setenv('PATH', str(tmp_path / 'empty-path'))
+    status = provider({}).status()
+    assert status.installed
+    assert status.version == '18.18.3'
+    assert status.tool_block == 'unverified'
+
+
+@pytest.mark.parametrize('provider', [Omp, Codex, Claude])
+def test_cli_path_order_precedes_user_install_candidates(tmp_path, monkeypatch, provider):
+    home = tmp_path / 'home'
+    bun = home / '.bun/bin'
+    first, second = tmp_path / 'first', tmp_path / 'second'
+    for directory, version in [(first, '1.0.0'), (second, '2.0.0'), (bun, '3.0.0')]:
+        directory.mkdir(parents=True)
+        executable(directory, monkeypatch, provider.name, f'print("{version}")')
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setenv('PATH', str(first) + ':' + str(second))
+    assert provider({}).status().version == '1.0.0'
+    monkeypatch.setenv('PATH', str(second) + ':' + str(first))
+    assert provider({}).status().version == '2.0.0'
+
+
+def test_bun_omp_completion_uses_same_discovery_and_tool_flags(tmp_path, monkeypatch):
+    home = tmp_path / 'home'
+    bun = home / '.bun/bin'
+    bun.mkdir(parents=True)
+    executable(bun, monkeypatch, 'omp', '''import sys
+assert '--no-tools' in sys.argv and '--no-extensions' in sys.argv
+assert '--no-skills' in sys.argv and '--no-rules' in sys.argv and '--no-context-files' in sys.argv
+assert '--no-lsp' in sys.argv
+assert sys.stdin.read() == 'synthetic'
+print('ok')
+''')
+    monkeypatch.setenv('HOME', str(home))
+    monkeypatch.setenv('PATH', str(tmp_path / 'empty-path'))
+    assert Omp({}).complete('synthetic', timeout=3).text == 'ok'
+
 @pytest.mark.parametrize('tool', ['command_execution', 'file_change', 'mcp_tool_call', 'web_search'])
 def test_codex_cli_flags_stdin_and_tool_events(tmp_path, monkeypatch, tool):
     executable(tmp_path, monkeypatch, 'codex', '''import sys, json, os

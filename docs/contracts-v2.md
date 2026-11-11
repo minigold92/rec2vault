@@ -208,6 +208,7 @@ CREATE TABLE tombstones (sha256 TEXT PRIMARY KEY, deleted_at REAL NOT NULL);   -
 | `ui.language` | `ko`·`en` | 시스템 언어 | — | 즉시 |
 
 - 이전 `REC_*`·`settings.env`는 업그레이드 이행이 한 번 변환한다: 임시 TOML에 쓰고 다시 읽어 검증 → rename → `settings.env`를 `settings.env.migrated`로. 런타임에 `REC_*` 별칭은 없다.
+- 설정의 ‘버전’은 인증된 `/api/status`의 `engine_version`(설치된 `quietclerk` 패키지 메타데이터, 없으면 `null`), `installation_method`(`app`/`cli`, 유효한 앱 소유 기록이 있을 때만 `app`), `last_updated_at`(성공한 엔진 업데이트의 `finished_at`, 없으면 `null`)을 표시한다. 앱 버전은 엔진에서 추정하지 않고 앱 메뉴에서 확인하도록 안내한다.
 - 화면에서 저장하면 파일 전체를 다시 쓴다(주석 보존 안 함, 문서에 명시).
 
 ---
@@ -409,6 +410,8 @@ class Provider(Protocol):
 
 `Completion`: `text`, `model`, `endpoint_class`, `duration`. 오류: `NotInstalled`, `AuthExpired`, `RateLimited`, `Timeout`, `ContextTooLong`, `ToolUseDetected`, `ProviderError`.
 
+- Codex·Claude·omp 실행 파일은 기존 PATH 순서가 우선이다. 없으면 사용자 HOME의 `.local/bin`, `.bun/bin`, `.npm-global/bin`, `.volta/bin`, `.cargo/bin` 순서로 실행 가능한 파일을 찾는다(각 사용자 설치 도구의 기본/관례적인 bin 위치). 셸 초기화 파일을 읽거나 plist를 변경하지 않는다. 같은 탐색을 버전·인증 확인과 실제 호출에 사용하며, 발견만으로 `tool_block` 검증 상태를 올리지 않는다.
+
 ### 8.2 선택 가능 조건과 동의
 
 - 자동 선택·대체 경로 후보는 **`tool_block='verified'`인 제공자만.** verified는 지원 버전 범위, 도구·MCP·사용자 설정 로딩 차단 방법, 인증 저장 위치를 문서화하고 격리 미끼 시험(`research/cli-no-tool.md`)을 통과한 조합이다. 호출 직전 버전이 검증 범위 밖이면 `unverified`로 내린다.
@@ -463,12 +466,12 @@ class Provider(Protocol):
 - CSP: `default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`.
 - 같은 네트워크 접근은 M1에서 **끈다**(설정 항목 없음). 켜는 작업은 TLS·장치 권한·폐기·Host 규칙을 따로 설계한 뒤.
 
-### 9.2 엔드포인트 (JSON 스키마는 `api/schema.json`으로 함께 관리)
+### 9.2 엔드포인트 (JSON 스키마는 `quietclerk/server/schema.json`으로 함께 관리)
 
 | 메서드·경로 | 요청 | 응답·오류 |
 |---|---|---|
 | `POST /api/session` | `{token}` | 204 + 쿠키 / 401 |
-| `GET /api/status` | — | 엔진·일시정지·현재 작업·단계·경과·제공자 상태·폰 연결 |
+| `GET /api/status` | — | 엔진·`engine_version`·`installation_method`·`last_updated_at`·일시정지·현재 작업·단계·경과·제공자 상태·폰 연결(인증 필요) |
 | `GET /api/jobs?status=&limit=&cursor=` | — | 목록 |
 | `GET /api/jobs/{id}` | — | 상세, 실행·단계 이력(보낸 필드 포함) |
 | `POST /api/jobs/{id}/process` | `{mode}` | 202 / 409 `{status}` / 404 |

@@ -1,5 +1,17 @@
 # Changelog / 변경 기록
 
+## 0.0.5
+
+### 한국어
+
+- 설정에서 엔진 버전·앱/CLI 설치 방식과 기록된 마지막 업데이트 시각을 확인합니다. 메뉴 막대에는 엔진 버전·상태와 별도의 앱 버전을 표시합니다.
+- launchd의 제한된 PATH 밖에 설치된 omp·Codex·Claude도 알려진 사용자 bin 위치에서 찾습니다. 기존 PATH 우선순위와 버전·도구 차단 검증은 유지하며, 기존 서비스 plist는 변경하지 않습니다.
+
+### English
+
+- Settings shows the engine version, app/CLI installation method and last recorded successful update time. The menu bar shows engine version/status and the separate app version.
+- Find omp, Codex and Claude in known per-user bin directories when launchd's limited PATH misses them. Preserve PATH precedence and version/tool-block checks without changing existing service plists.
+
 ## 0.0.4
 
 ### 한국어

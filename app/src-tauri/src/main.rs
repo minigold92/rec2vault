@@ -2,6 +2,7 @@
 
 use quietclerk_app::bootstrap;
 mod first_run;
+mod menu_status;
 mod update_policy;
 
 use std::{
@@ -10,7 +11,7 @@ use std::{
 };
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{TrayIconBuilder, TrayIconEvent},
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -22,6 +23,7 @@ struct Shell {
     window_id: AtomicU64,
     engine_status: MenuItem<tauri::Wry>,
     install_item: MenuItem<tauri::Wry>,
+    refreshing_status: AtomicBool,
 }
 
 fn l<'a>(korean: bool, ko: &'a str, en: &'a str) -> &'a str {
@@ -30,6 +32,25 @@ fn l<'a>(korean: bool, ko: &'a str, en: &'a str) -> &'a str {
     } else {
         en
     }
+}
+
+fn refresh_engine_status(app: &tauri::AppHandle) {
+    let shell = app.state::<Shell>();
+    if shell.refreshing_status.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let status = app
+            .path()
+            .home_dir()
+            .ok()
+            .and_then(|home| quietclerk_app::app_install::authenticated_status(&home).ok());
+        let shell = app.state::<Shell>();
+        let label = menu_status::engine_label(shell.korean, status.as_ref());
+        let _ = shell.engine_status.set_text(label);
+        shell.refreshing_status.store(false, Ordering::SeqCst);
+    });
 }
 
 fn show_error(app: &tauri::AppHandle, error: impl std::fmt::Display) {
@@ -226,6 +247,13 @@ fn main() {
                 false,
                 None::<&str>,
             )?;
+            let app_version = MenuItem::with_id(
+                app,
+                "app-version",
+                menu_status::app_label(ko, env!("CARGO_PKG_VERSION")),
+                false,
+                None::<&str>,
+            )?;
             let install_item = MenuItem::with_id(
                 app,
                 "install",
@@ -239,11 +267,21 @@ fn main() {
                 window_id: AtomicU64::new(0),
                 engine_status: engine_status.clone(),
                 install_item: install_item.clone(),
+                refreshing_status: AtomicBool::new(false),
             });
             app.manage(first_run::FirstRun::default());
             let quit = MenuItem::with_id(app, "quit", l(ko, "종료", "Quit"), true, None::<&str>)?;
-            let menu =
-                Menu::with_items(app, &[&engine_status, &install_item, &open, &update, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &engine_status,
+                    &app_version,
+                    &install_item,
+                    &open,
+                    &update,
+                    &quit,
+                ],
+            )?;
             TrayIconBuilder::new()
                 .icon(tauri::image::Image::from_bytes(include_bytes!(
                     "../icons/tray.png"
@@ -251,6 +289,11 @@ fn main() {
                 .icon_as_template(true)
                 .tooltip("QuietClerk")
                 .menu(&menu)
+                .on_tray_icon_event(|tray, event| {
+                    if matches!(event, TrayIconEvent::Click { .. }) {
+                        refresh_engine_status(tray.app_handle());
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => {
                         if let Err(error) = open_window(app) {

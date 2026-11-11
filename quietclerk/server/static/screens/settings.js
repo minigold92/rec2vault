@@ -151,10 +151,17 @@ const serverWhy = (message) => {
 
 export async function mount({content}) {
   setTitle('설정 · QuietClerk', 'Settings · QuietClerk');
-  const state = {server: null, providers: [], draft: {}, errors: {}, notice: null, loadError: null, migration: null};
+  const state = {server: null, identity: null, providers: [], draft: {}, errors: {}, notice: null, loadError: null, migration: null};
   const barHost = h('div', {class: 'slot'});
 
+
+  async function loadIdentity() {
+    try {
+      state.identity = await get('/api/status');
+    } catch (_) { /* version information remains explicitly unknown */ }
+  }
   async function load() {
+    await loadIdentity();
     try {
       state.server = await get('/api/settings');
       state.loadError = null;
@@ -698,12 +705,21 @@ export async function mount({content}) {
           control: chip('idle', '—', L('꺼짐 · 설정 없음', 'Off · no setting'))}),
         field({id: 'f-out2', key: 'logout', label: L('이 브라우저에서 로그아웃', 'Sign out of this browser'), help: L('다시 열려면 터미널에서 quietclerk open을 실행해요.', 'Run quietclerk open in Terminal to come back.'),
           control: btn({small: true, engine: true, label: L('로그아웃', 'Sign out'), on: {click: logout}})})),
+      section('s-version', L('버전', 'Version'),
+        field({id: 'f-engine-version', key: 'engine_version', label: L('엔진 버전', 'Engine version'),
+          control: h('span', {id: 'f-engine-version'}, state.identity?.engine_version || L('확인할 수 없음', 'Unavailable'))}),
+        field({id: 'f-install-method', key: 'installation_method', label: L('설치 방식', 'Installation method'),
+          control: h('span', {id: 'f-install-method'}, state.identity?.installation_method === 'app' ? L('앱', 'App')
+            : state.identity?.installation_method === 'cli' ? 'CLI' : L('확인할 수 없음', 'Unavailable'))}),
+        state.identity?.last_updated_at ? field({id: 'f-last-update', key: 'last_updated_at', label: L('마지막 업데이트', 'Last updated'),
+          control: h('time', {id: 'f-last-update', datetime: state.identity.last_updated_at}, state.identity.last_updated_at)}) : null,
+        h('p', {class: 'small muted'}, L('앱 버전은 Mac 메뉴 막대의 QuietClerk 메뉴에서 확인하세요.', 'Find the app version in the QuietClerk menu in the Mac menu bar.'))),
       section('s-upd', L('업데이트', 'Updates'),
         switchField('updates.check', 'f-uc', L('하루 한 번 새 버전 확인', 'Check for a new version once a day'),
           L('GitHub에 새 버전이 있는지만 묻고, 녹음·회의록은 보내지 않아요', 'Only asks GitHub whether a new version exists; no recordings or minutes are sent'), 'now'),
         field({id: 'f-ucheck', key: 'update_check', label: L('직접 확인', 'Manual check'),
           help: L('눌러서 바로 물어봐요. 하루 한 번 확인이 꺼져 있어도 돼요', 'Asks right away, even when the daily check is off'), control: updateCheckControl('f-ucheck')}),
-        field({id: 'f-uver', key: 'update_version', label: L('버전', 'Version'), control: updateVersions('f-uver')})),
+        field({id: 'f-uver', key: 'update_version', label: L('소스 변경', 'Source revision'), control: updateVersions('f-uver')})),
       section('consent', L('녹음 동의와 회사 정책', 'Recording consent & company policy'),
         h('div', {class: 'stack small ink'},
           h('p', null, L('녹음 전에 함께 있는 사람에게 알리고 동의를 받아 주세요. 녹음에 대한 법은 나라와 상황마다 달라요. QuietClerk는 녹음이 허용되는지 판단하지 않아요.', 'Tell everyone present and get their consent before recording. Recording laws differ by country and situation. QuietClerk doesn\'t judge whether a recording is allowed.')),
@@ -852,7 +868,7 @@ export async function mount({content}) {
       state.notice,
       h('nav', {class: 'row', 'aria-label': L('설정 구역', 'Settings sections')}, [
         ['s-out', L('회의록', 'Notes')], ['s-rec', L('처리할 녹음', 'Recordings')], ['s-lang', L('언어', 'Language')], ['s-vocab', L('단어장', 'Word list')], ['s-sum', L('요약 구성', 'Summary layout')], ['providers', L('요약 엔진', 'Summary engines')],
-        ['retention', L('저장·삭제', 'Storage & deletion')], ['s-ui', L('화면', 'Screen')], ['s-upd', L('업데이트', 'Updates')], ['consent', L('녹음 동의', 'Recording consent')]]
+        ['retention', L('저장·삭제', 'Storage & deletion')], ['s-ui', L('화면', 'Screen')], ['s-version', L('버전', 'Version')], ['s-upd', L('업데이트', 'Updates')], ['consent', L('녹음 동의', 'Recording consent')]]
         .map(([id, text]) => h('a', {class: 'chip line', href: `#${id}`}, text))),
       sections(), barHost);
     renderProviders();
