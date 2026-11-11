@@ -1,5 +1,15 @@
 # Changelog / 변경 기록
 
+## 0.0.7
+
+### 한국어
+
+- 메뉴 막대 아이콘을 바꿨습니다. 고양이 귀를 단 Mac mini 모양이고, 입은 USB-C 단자, 오른쪽 아래 점은 전원 표시등입니다. 선 대신 꽉 찬 모양이라 작은 크기에서도 잘 보입니다.
+
+### English
+
+- New menu bar icon: a Mac mini with cat ears, a USB-C port for a mouth and the power light at the lower right. A solid shape instead of thin outlines, so it stays legible at menu bar size.
+
 ## 0.0.6
 
 ### 한국어

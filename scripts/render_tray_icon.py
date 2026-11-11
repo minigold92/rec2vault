@@ -1,7 +1,8 @@
 """Render app/src-tauri/icons/tray.png: the menu bar template icon, a Mac mini with cat ears.
 
-One solid shape; inner ears, eyes and the ω mouth are holes, so macOS can tint it for light and
-dark menu bars. Geometry is on a 176-unit grid. Usage:
+A flat, wide box (Mac mini front) with two cat ears. Inner ears, the eyes, a USB-C-shaped mouth
+and the power light are holes, so macOS can tint the single solid shape for light and dark menu
+bars. Geometry is on a 176-unit grid. Usage:
     uv run --no-project --with pillow python scripts/render_tray_icon.py app/src-tauri/icons/tray.png [preview.png]
 """
 import sys
@@ -20,18 +21,18 @@ def shape(d, pts, fill, round_w):
 def icon():
     im = Image.new('L', (176 * K, 176 * K), 0)
     d = ImageDraw.Draw(im)
-    left_outer = [(30, 88), (46, 28), (76, 80)]
-    left_inner = [(44, 72), (50, 46), (64, 70)]
+    left_outer = [(28, 94), (44, 34), (74, 86)]
+    left_inner = [(42, 78), (48, 52), (62, 76)]
     mirror = lambda pts: [(176 - x, y) for x, y in pts]
     shape(d, left_outer, 255, 10)
     shape(d, mirror(left_outer), 255, 10)
-    d.rounded_rectangle(P([(16, 74), (160, 140)]), 20 * K, fill=255)          # Mac mini body
+    d.rounded_rectangle(P([(10, 80), (166, 132)]), 14 * K, fill=255)          # Mac mini front, about 3:1
     shape(d, left_inner, 0, 5)                                                 # inner ears
     shape(d, mirror(left_inner), 0, 5)
     for cx in (62, 114):                                                       # eyes
-        d.ellipse(P([(cx - 10, 94), (cx + 10, 114)]), fill=0)
-    for x0 in (72, 88):                                                        # ω mouth
-        d.arc(P([(x0, 104), (x0 + 16, 124)]), 10, 170, fill=0, width=int(4.5 * K))
+        d.ellipse(P([(cx - 9, 92), (cx + 9, 110)]), fill=0)
+    d.rounded_rectangle(P([(79, 112), (97, 118)]), 3 * K, fill=0)            # mouth, a USB-C port (3:1)
+    d.ellipse(P([(146, 118), (154, 126)]), fill=0)                            # power light
     return im
 
 big = icon()
