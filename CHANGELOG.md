@@ -1,5 +1,17 @@
 # Changelog / 변경 기록
 
+## 0.0.8
+
+### 한국어
+
+- 맥서기를 새로 그렸습니다. 고양이 귀를 단 은색 도트 Mac mini입니다. 화면 캐릭터, 앱 아이콘, 메뉴 막대 아이콘, README 배너가 모두 같은 그림입니다.
+- 화면의 맥서기가 가끔 눈을 깜빡이고, 녹음을 처리하는 동안은 눈을 굴리며 전원 표시등이 깜빡입니다. 오류일 때는 눈을 감고 땀을 흘립니다. macOS에서 "동작 줄이기"를 켜면 움직이지 않습니다.
+
+### English
+
+- Redrew the mascot 맥서기: a silver pixel Mac mini with cat ears. The screens, app icon, menu bar icon and README banners now share one drawing.
+- On screen it blinks now and then, glances around with a pulsing power light while a recording is processed, and shuts its eyes with a sweat drop on errors. It stays still when macOS Reduce Motion is on.
+
 ## 0.0.7
 
 ### 한국어

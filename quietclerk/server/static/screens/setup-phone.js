@@ -237,7 +237,7 @@ export async function step6({content, footer}) {
       mood = say('worry', L('녹음이 도착했는데, 건너뛰었어요.', 'The recording arrived but was skipped.'));
       body = jobCard(job, view, actions, {mono: true});
     } else if (['running', 'queued', 'retry'].includes(group) || (job.status === 'running')) {
-      mood = say('ok', L('새 녹음이 도착해서 받아 적고 있어요.', 'A new recording arrived; I\'m writing it up.'), L('남은 시간은 짐작하지 않고, 단계와 지나간 시간만 보여 드려요.', 'No time-left guesses — just the step and time elapsed.'));
+      mood = say('work', L('새 녹음이 도착해서 받아 적고 있어요.', 'A new recording arrived; I\'m writing it up.'), L('남은 시간은 짐작하지 않고, 단계와 지나간 시간만 보여 드려요.', 'No time-left guesses — just the step and time elapsed.'));
       const e = elapsed();
       body = h('section', {class: 'card hero', 'aria-labelledby': 'tr-h'},
         h('div', {class: 'card-head'}, h('h2', {id: 'tr-h'}, job.source_name), view ? chip(view.chip.kind, view.chip.glyph, view.chip.label) : null),
