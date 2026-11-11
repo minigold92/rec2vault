@@ -105,14 +105,15 @@ D0/S1/A1, 앱 0.0.3. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그
 - **로그인 자동 시작은 launchd RunAtLoad/KeepAlive와 BTM 기록으로만 확인했다.** 실제 재로그인·재부팅은 미확인. A1 설치 후 다음 재부팅 때 앱을 열기 전에 `launchctl print gui/$(id -u)/local.quietclerk.serve`의 `state = running`과 `quietclerk status`를 확인한다.
 - **P1 재평가 조건:** Developer ID로 서명한 동일 bundle ID의 두 버전으로 A 등록→인증→앱 종료→kill→번들 교체→자동 재등록→이동→CLI 공존→해제를 다시 실측한다. 처리 중이면 인증 상태의 `current_job`이 없어질 때까지 기다리고, 실패 이유를 UI에 표시·다음 시작 재시도하는 설계를 그때 함께 구현한다. ad-hoc의 `LWCR.cdhash` 결과를 Developer ID 동작으로 일반화하지 않는다. API 근거: [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice), [objc2-service-management 설명](https://docs.rs/objc2-service-management/latest/objc2_service_management/struct.SMAppService.html).
 
-## 7. A1 앱 소유 설치·첫 실행 (0.0.3)
+## 7. A1 앱 소유 설치·첫 실행 (0.0.3, 0.0.4 수정 예정)
 
 ### 불변식·실패 경계
 
 - CLI 소유 엔진은 설치·등록·업데이트하지 않는다. `login_service::status(home)`의 `cli` 판단을 우선하고, 인증된 상태를 확인한 뒤 기존 엔진 화면만 연다.
 - 앱 리소스는 빌드된 wheel, macOS arm64/Python 3.12용 `engine-requirements.txt`(모든 버전·SHA-256 고정), manifest, LGPL 전문과 빌드 입력이다. wheel·목록 해시를 실행 전에 확인한다. 준비 스크립트 `scripts/prepare_app.py` 하나를 로컬 Tauri와 두 macOS CI가 같이 쓴다.
 - `uv` 0.13.1은 공식 배포 tar SHA-256을 검사하고 `externalBin`에 둔다. Resources 안 Mach-O는 Tauri 서명 대상이 아니므로 사용하지 않는다. FFmpeg 7.1.2도 SHA-256 고정 공식 소스를 필요한 디먹서·디코더·PCM/WAV 출력·리샘플러만 켜 정적 빌드하고 `externalBin`으로 서명한다. GPL/nonfree는 금지한다. 정확한 URL·해시·configure 인자는 `app/build-inputs.json`, LGPL 전문은 Resources의 `COPYING.LGPLv2.1`에 들어간다. CI 캐시 키는 이 입력 전체의 해시다.
-- 최초 설치는 Apple Silicon·macOS 14 이상·여유 8GB(엔진 약 2GB + 모델 약 6GB)·네트워크를 확인한 뒤 사용자 동의로 시작한다. 모델은 **설치 단계**에서 받는다. 기존 마법사 2단계는 다운로드 API가 없어 터미널 없이 완료할 수 없기 때문이다. 모델별 시작·완료와 전체 경과 시간을 표시하고 Hugging Face 캐시를 재사용한다. 앱 업데이트는 모델을 다시 받지 않는다.
+- 최초 설치는 Apple Silicon·macOS 14 이상·네트워크를 확인한 뒤 사용자 동의로 시작한다. Python 준비 전 Rust는 엔진 환경 약 2GB + 작업 여유 2GB만 확인하고, 모델 용량 판단은 Python만 한다. Python은 **모델 받기 직전** 고정 commit revision의 Hugging Face 파일 메타데이터와 캐시 조회로 아직 없는 파일 크기를 합산하고, 그 합 + 처리 계약의 작업 여유 2GB를 캐시 파일시스템의 남은 공간과 비교한다. 전부 있으면 모델 필요량은 0이며 2GB 여유만 요구한다. 부족하면 다운로드 전에 ‘필요 X GB, 남은 Y GB’를 한국어·영어로 표시한다. 메타데이터 조회 실패는 캐시를 차감하지 않고 전체 모델 6GB + 여유 2GB로 보수적으로 판단하며 로그에 남긴다.
+  모델은 **설치 단계**에서 받는다. ‘없는 모델만 받습니다(최대 약 6GB)’와 모델별 시작·완료·‘이미 있음’, 전체 경과 시간을 표시한다. 메타데이터·캐시 조회·다운로드·로컬 추론은 같은 고정 revision을 사용한다. Hugging Face 캐시를 재사용하며 앱 업데이트는 모델을 다시 받지 않는다.
 - 번들 uv가 Python 3.12 부트스트랩 환경을 만든 뒤 번들 wheel의 CLI로 `install --app-install --source <wheel>`을 실행한다. 앱 전용 옵션은 고정 목록·도구 위치를 전달한다. 기존 CLI 기본 동작은 바꾸지 않는다. 서비스·등록·인증·롤백은 Python 설치기 소유다. plist 실행 파일은 venv Python이다.
 - 상태 기계: 확인 → 미설치 안내 → 사전 점검 → Python 준비 → 의존성 설치 → 모델 확인 → 서비스 등록·인증 → 엔진 화면. 앱 소유의 버전/목록 해시가 다르면 작업 종료 대기 → 기존 rollback update → 인증 → 화면이다. 서비스 중지/승인 거부·네트워크·디스크·해시 실패는 한 문장 이유와 다시 시도, support의 `app-install.log`로 끝난다. CLI 설치는 이 전이에 들어가지 않는다.
 - 동시 설치는 프로세스 수명의 파일 잠금으로 거부한다. 실패·강제 종료의 미완료 트랜잭션은 다음 시도에서 이전 서비스/기록으로 복구하고 다시 설치한다. 완료 표시 전 환경은 엔진으로 사용하지 않는다. support/root 및 경로 조상의 심볼릭 링크는 앱 설치 경로에서 거부한다.
@@ -124,7 +125,8 @@ D0/S1/A1, 앱 0.0.3. 엔진의 처리·저장 규칙은 `contracts-v2.md`를 그
 
 | 입력·상황 | 처리·자동 시험 |
 |---|---|
-| Intel·macOS 13 이하·여유 8GB 미만 | 설치/네트워크 전에 중단하고 필요한 조건·크기를 안내 (`test_platform_and_disk_fail_before_network`) |
+| Intel·macOS 13 이하·엔진 준비 여유 4GB 미만 | Rust는 Python 준비 전에 중단; Python 플랫폼 점검은 네트워크 전에 중단 (`engine_space_does_not_reserve_model_downloads`, `test_platform_fails_before_network`) |
+| 모델 전체/일부 캐시·공간 부족·메타데이터 실패 | 네트워크 없는 가짜 허브/캐시 시험으로 0 + 2GB, 누락 크기 합, 다운로드 전 중단·양언어 안내, 전체 6GB 대체 판단 확인 (`tests/test_model_download.py`) |
 | 네트워크 단절 | 사전 점검 중단, 설치 중 오류는 로그·다시 시도. 완료 모델 파일은 캐시 재사용 (`test_network_disconnection_is_retryable_before_install`, `test_model_download_restart_reuses_completed_files_and_reports_each_model`) |
 | wheel·목록·manifest 손상 | 컴파일된 manifest SHA-256과 각 파일 SHA-256이 모두 맞아야 실행 (`resources_require_compiled_manifest_and_matching_bytes`, `test_damaged_bundle_stops_before_environment_creation`) |
 | CLI 설치·사용자 plist 교체 | 읽기·인증만, 앱 옵션을 주어도 소유권 없는 update는 거부 (`test_cli_coexistence_never_preflights_or_installs`, `test_app_packaging_options_cannot_modify_cli_owned_service`) |

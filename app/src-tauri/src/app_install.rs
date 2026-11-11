@@ -130,7 +130,7 @@ fn execute(
                 progress(ko, en);
             }
             if let Some(reason) = value["error"].as_str() {
-                error = Some(reason.to_string());
+                error.get_or_insert_with(|| reason.to_string());
             }
         }
     }
@@ -200,6 +200,23 @@ pub fn authenticated(home: &Path) -> Result<(), String> {
         .map(|_| ())
         .map_err(|_| "엔진 상태 인증 실패 / Engine status authentication failed".into())
 }
+// Before Python exists, allow ~2 GB for the managed Python/engine environments
+// plus the engine contract's 2 GB working reserve. Only Python sizes models.
+const ENGINE_REQUIRED_BYTES: u128 = 4_000_000_000;
+
+fn check_engine_space(available: u128) -> Result<(), String> {
+    if available < ENGINE_REQUIRED_BYTES {
+        return Err(format!(
+            "엔진 준비에 필요 {:.1} GB, 남은 {:.1} GB / Engine preparation requires {:.1} GB, available {:.1} GB",
+            ENGINE_REQUIRED_BYTES as f64 / 1e9,
+            available as f64 / 1e9,
+            ENGINE_REQUIRED_BYTES as f64 / 1e9,
+            available as f64 / 1e9,
+        ));
+    }
+    Ok(())
+}
+
 fn preflight(home: &Path) -> Result<(), String> {
     if std::env::consts::OS != "macos" || std::env::consts::ARCH != "aarch64" {
         return Err("Apple Silicon Mac이 필요합니다. / An Apple Silicon Mac is required.".into());
@@ -224,9 +241,7 @@ fn preflight(home: &Path) -> Result<(), String> {
         return Err("cannot read available disk space".into());
     }
     let info = unsafe { info.assume_init() };
-    if u128::from(info.f_bavail).saturating_mul(u128::from(info.f_frsize)) < 8_000_000_000 {
-        return Err("엔진 약 2GB + 모델 약 6GB, 여유 8GB가 필요합니다. / Free 8GB for the engine (~2GB) and models (~6GB).".into());
-    }
+    check_engine_space(u128::from(info.f_bavail).saturating_mul(u128::from(info.f_frsize)))?;
     let client = client()?;
     for url in ["https://pypi.org/simple/", "https://huggingface.co/"] {
         client.head(url).send().and_then(|r| r.error_for_status()).map_err(|_| "인터넷 연결을 확인하고 다시 시도하세요. / Check your internet connection and retry.")?;
@@ -361,6 +376,28 @@ pub fn perform_install(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nested_install_failure_preserves_specific_disk_reason() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut log = File::create(temp.path().join("install.log")).unwrap();
+        let error = execute(
+            Command::new("/bin/sh").args([
+                "-c",
+                "printf '%s\\n' '{\"error\":\"필요 3 GB, 남은 2 GB / requires 3 GB, available 2 GB\"}' '{\"error\":\"Installation failed\"}'; exit 1",
+            ]),
+            &mut log,
+            &|_, _| {},
+            &AtomicI32::new(0),
+        )
+        .unwrap_err();
+        assert_eq!(error, "필요 3 GB, 남은 2 GB / requires 3 GB, available 2 GB");
+    }
+    #[test]
+    fn engine_space_does_not_reserve_model_downloads() {
+        assert!(check_engine_space(ENGINE_REQUIRED_BYTES).is_ok());
+        let error = check_engine_space(ENGINE_REQUIRED_BYTES - 1).unwrap_err();
+        assert!(error.contains("필요 4.0 GB") && error.contains("requires 4.0 GB"));
+    }
     #[test]
     fn concurrent_installs_and_symlinks_are_rejected() {
         let temp = tempfile::tempdir().unwrap();

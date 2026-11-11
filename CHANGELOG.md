@@ -1,5 +1,15 @@
 # Changelog / 변경 기록
 
+## 0.0.4 (Unreleased / 미출시)
+
+### 한국어
+
+- 이미 있는 모델 때문에 설치에 여유 8GB를 요구하지 않습니다. 고정 revision에서 없는 파일만 계산해 다운로드 크기 + 작업 여유 2GB를 확인하고, 이미 있는 모델은 설치 단계에 표시합니다. 메타데이터 조회 실패 시 전체 크기로 보수적으로 점검하고 로그에 남깁니다.
+
+### English
+
+- Cached models no longer trigger a blanket 8 GB installation requirement. Check only missing files at pinned revisions plus 2 GB working space, and show models already present. If metadata is unavailable, conservatively check the full size and log the fallback.
+
 ## 0.0.3
 
 ### 한국어

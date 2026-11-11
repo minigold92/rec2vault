@@ -12,6 +12,13 @@ MODELS = {'diarize': 'mlx-community/Nemotron-3-Diarization',
           'asr': 'mlx-community/Qwen3-ASR-1.7B-8bit',
           'aligner': 'mlx-community/Qwen3-ForcedAligner-0.6B-8bit',
           'whisper': 'mlx-community/whisper-large-v3-turbo'}
+# Immutable snapshots shared by download sizing, prefetch and local inference.
+MODEL_REVISIONS = {
+    MODELS['diarize']: '59ed2dbfc1346dcea9d423c71306a3a2499c568f',
+    MODELS['asr']: 'a8379a2e2f9e313c9292cdf1af4055ab56d50d55',
+    MODELS['aligner']: '0e1a68e91d815300c7c9754b2a7639378b23db15',
+    MODELS['whisper']: 'a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb',
+}
 QWEN_LANGUAGES = {'ko': 'Korean', 'en': 'English'}
 STAGE_MODELS = {'diarize': ('diarize',), 'detect_language': ('whisper',),
                 'transcribe': ('asr', 'aligner'), 'second_pass': ('whisper',)}
@@ -26,6 +33,7 @@ def balanced_chunks(samples, sample_rate, max_sec=60):
 def model_snapshot(repo, revision=None):
     try:
         from huggingface_hub import snapshot_download
+        revision = revision or MODEL_REVISIONS.get(repo)
         options = {'local_files_only': True}
         if revision is not None:
             options['revision'] = revision

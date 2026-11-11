@@ -4,7 +4,7 @@ document.documentElement.lang = korean ? 'ko' : 'en';
 const element = id => document.getElementById(id);
 const invoke = (name) => window.__TAURI_INTERNALS__.invoke(name);
 element('intro').textContent = L('터미널이나 Homebrew 없이, 이 Mac에 엔진을 설치합니다.', 'Install the engine on this Mac without Terminal or Homebrew.');
-element('space').textContent = L('엔진 약 2GB + 모델 약 6GB. 시작 전에 여유 8GB와 인터넷 연결을 점검합니다.', 'Engine ~2GB + models ~6GB. We check for 8GB free and an internet connection before starting.');
+element('space').textContent = L('엔진 약 2GB. 없는 모델만 받습니다(최대 약 6GB). 받을 크기와 작업 여유 2GB를 점검합니다.', 'Engine ~2GB. Downloads only missing model files (up to about 6 GB). We check the download size plus 2 GB working space.');
 element('consent').textContent = L('설치하면 로그인할 때 엔진이 시작되고, 앱을 종료해도 계속 실행됩니다. 녹음은 내려받기 서버에 보내지 않습니다.', 'Installation starts the engine at login; it keeps running after you quit the app. Recordings are not sent to download servers.');
 element('install').addEventListener('click', async () => {
   element('install').disabled = true;

@@ -45,15 +45,14 @@ def test_manifest_cannot_escape_bundle(tmp_path, wheel):
         app.load_payload(resources)
 
 
-@pytest.mark.parametrize('machine,release,free,reason', [
-    ('x86_64', '14.0', app.REQUIRED_BYTES, 'Apple Silicon'),
-    ('arm64', '13.9', app.REQUIRED_BYTES, 'macOS 14'),
-    ('arm64', '14.0', app.REQUIRED_BYTES - 1, '8GB'),
+@pytest.mark.parametrize('machine,release,reason', [
+    ('x86_64', '14.0', 'Apple Silicon'),
+    ('arm64', '13.9', 'macOS 14'),
 ])
-def test_platform_and_disk_fail_before_network(tmp_path, monkeypatch, machine, release, free, reason):
+def test_platform_fails_before_network(tmp_path, monkeypatch, machine, release, reason):
     monkeypatch.setattr(app.urllib.request, 'urlopen', lambda *a, **k: pytest.fail('network must not be reached'))
     with pytest.raises(install.InstallError, match=reason):
-        app.preflight(tmp_path, system='Darwin', machine=machine, release=release, free=free)
+        app.preflight(tmp_path, system='Darwin', machine=machine, release=release)
 
 
 def test_network_disconnection_is_retryable_before_install(tmp_path, monkeypatch):
@@ -61,7 +60,7 @@ def test_network_disconnection_is_retryable_before_install(tmp_path, monkeypatch
         raise OSError('network down')
     monkeypatch.setattr(app.urllib.request, 'urlopen', offline)
     with pytest.raises(install.InstallError, match='internet connection'):
-        app.preflight(tmp_path, system='Darwin', machine='arm64', release='14.0', free=app.REQUIRED_BYTES)
+        app.preflight(tmp_path, system='Darwin', machine='arm64', release='14.0')
     assert list(tmp_path.iterdir()) == []
 
 
@@ -139,6 +138,9 @@ def test_model_download_restart_reuses_completed_files_and_reports_each_model(tm
             downloaded.append(repo)
         return str(cached)
     monkeypatch.setitem(sys.modules, 'huggingface_hub', types.SimpleNamespace(snapshot_download=snapshot))
+    monkeypatch.setitem(sys.modules, 'huggingface_hub.constants', types.SimpleNamespace(HF_HUB_CACHE=str(tmp_path)))
+    monkeypatch.setattr(models, 'download_sizes', lambda: dict.fromkeys(repos, 1))
+    monkeypatch.setattr(models.shutil, 'disk_usage', lambda path: SimpleNamespace(free=10_000_000_000))
     with pytest.raises(OSError):
         models.prefetch(app_progress=True)
     models.prefetch(app_progress=True)

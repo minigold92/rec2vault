@@ -20,8 +20,6 @@ import urllib.request
 
 from . import install
 
-REQUIRED_BYTES = 8_000_000_000
-
 
 def stage(ko, en):
     print(json.dumps({'ko': ko, 'en': en}), flush=True)
@@ -54,16 +52,13 @@ def load_payload(resources, source=None):
     return manifest, wheel
 
 
-def preflight(home, *, system=None, machine=None, release=None, free=None, network=True):
+def preflight(home, *, system=None, machine=None, release=None, network=True):
     if (system or platform.system()) != 'Darwin' or (machine or platform.machine()) != 'arm64':
         raise install.InstallError('Apple Silicon이 필요합니다. / An Apple Silicon Mac is required.')
     if int((release or platform.mac_ver()[0]).split('.')[0]) < 14:
         raise install.InstallError('macOS 14 이상이 필요합니다. / macOS 14 or later is required.')
     safe_path(install.SUPPORT if home == Path.home() else home / 'Library/Application Support/QuietClerk')
     safe_path(home / 'QuietClerk')
-    available = shutil.disk_usage(home).free if free is None else free
-    if available < REQUIRED_BYTES:
-        raise install.InstallError('엔진 약 2GB + 모델 약 6GB, 여유 8GB가 필요합니다. / Free 8GB for the engine (~2GB) and models (~6GB).')
     if network:
         try:
             for url in ('https://pypi.org/simple/', 'https://huggingface.co/'):
@@ -127,7 +122,7 @@ class AppAdapter(install.MacAdapter):
                       'import mlx.core, starlette, uvicorn, yaml, jinja2; import quietclerk.cli'])
 
     def check_models(self, venv, source):
-        stage('모델 확인·받기 (약 6GB, 캐시 이어받기)', 'Checking/downloading models (~6GB; reuses cache)')
+        stage('없는 모델만 받습니다(최대 약 6GB)', 'Downloads only missing model files (up to about 6 GB)')
         if self.download_models:
             self.command([str(venv / 'bin/python'), '-I', '-m', 'quietclerk.models', 'prefetch', '--app-progress'])
         self.command([str(venv / 'bin/python'), '-I', '-c',
