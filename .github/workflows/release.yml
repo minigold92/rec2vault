@@ -19,6 +19,14 @@ jobs:
           targets: aarch64-apple-darwin
       - run: npm ci
         working-directory: app
+      - name: Tag must match every app version field
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          a=$(node -p "require('./app/package.json').version")
+          b=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          c=$(sed -n 's/^version = "\(.*\)"/\1/p' app/src-tauri/Cargo.toml | head -1)
+          echo "tag=$v package.json=$a tauri.conf.json=$b Cargo.toml=$c"
+          [ "$v" = "$a" ] && [ "$v" = "$b" ] && [ "$v" = "$c" ]
       - name: Read this version's release notes
         id: notes
         uses: actions/github-script@v7

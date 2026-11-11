@@ -1,5 +1,15 @@
 # Changelog / 변경 기록
 
+## 0.0.2
+
+### 한국어
+
+- 앱 자동 업데이트(0.0.1 → 0.0.2)를 실제로 확인하기 위한 릴리스입니다. 기능 변화는 없습니다.
+
+### English
+
+- Release to verify the in-app update from 0.0.1 to 0.0.2 end to end. No functional changes.
+
 ## 0.0.1
 
 ### 한국어
