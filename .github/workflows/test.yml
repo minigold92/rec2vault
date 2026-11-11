@@ -2,7 +2,9 @@ name: test
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04 (2026-11): apt there hung for an hour on unresolvable mirrors.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -11,6 +13,7 @@ jobs:
       - run: uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
   macos:
     runs-on: macos-15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
