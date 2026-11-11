@@ -2,13 +2,20 @@ name: test
 on: [push, pull_request]
 jobs:
   test:
-    # ubuntu-latest moved to 26.04 (2026-11): apt there hung for an hour on unresolvable mirrors.
+    # 2026-11-11: apt on GitHub runners could not resolve the Ubuntu mirrors (24.04 and 26.04) and hung
+    # for an hour, so ffmpeg/ffprobe come from a static build hosted on GitHub instead.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: ffmpeg and ffprobe (static build from BtbN/FFmpeg-Builds)
+        run: |
+          curl -fsSL --retry 3 --max-time 300 -o /tmp/ffmpeg.tar.xz \
+            https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz
+          mkdir -p "$HOME/ffmpeg" && tar -xJf /tmp/ffmpeg.tar.xz -C "$HOME/ffmpeg" --strip-components=1
+          echo "$HOME/ffmpeg/bin" >> "$GITHUB_PATH"
+          "$HOME/ffmpeg/bin/ffmpeg" -hide_banner -version | head -1
       # The tests cover intake, correction/summary logic and rendering; they do not load MLX models.
       - run: uv run --python 3.12 --no-project --with pytest --with pyyaml --with starlette --with uvicorn --with jinja2 --with httpx --with jsonschema --with numpy python -m pytest -q tests
   macos:
