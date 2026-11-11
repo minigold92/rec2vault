@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>홈 · QuietClerk</title>
+<meta name="qc-title-ko" content="홈 · QuietClerk">
+<meta name="qc-title-en" content="Home · QuietClerk">
+<link rel="stylesheet" href="assets/qc.css">
+<script src="assets/qc.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main"><span data-l="ko">본문으로 건너뛰기</span><span data-l="en">Skip to content</span></a>
+<div class="app">
+<aside class="side" aria-label="주 메뉴" data-i18n="aria-label" data-ko="주 메뉴" data-en="Main menu">
+<a class="brand" href="home.html"><img src="assets/seogi.svg" alt=""><span><b>QuietClerk</b><span><span data-l="ko">맥서기</span><span data-l="en">Meeting minutes on your Mac</span></span></span></a>
+<nav class="nav"><a href="home.html" aria-current="page"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span data-l="ko">홈</span><span data-l="en">Home</span></a><a href="notes.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span data-l="ko">회의록</span><span data-l="en">Notes</span></a><a href="jobs.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg><span data-l="ko">작업</span><span data-l="en">Jobs</span><span class=count>6</span></a><a href="backlog.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10 6h4"/><path d="M12 10v6m-3-3 3 3 3-3"/></svg><span data-l="ko">기존 녹음</span><span data-l="en">Older recordings</span></a><a href="settings.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span data-l="ko">설정</span><span data-l="en">Settings</span></a></nav>
+<div class="side-foot"><div class="engine" aria-live="polite">
+<span data-when="normal empty error"><b><span data-l="ko">엔진 켜짐</span><span data-l="en">Engine on</span></b></span>
+<span data-when="paused"><b><span data-l="ko">엔진 켜짐 · 일시정지</span><span data-l="en">Engine on · paused</span></b></span>
+<span data-when="offline"><b><span data-l="ko">엔진 연결 끊김</span><span data-l="en">Engine unreachable</span></b></span>
+<span class="muted">127.0.0.1:8765 · v0.2.0</span></div><div class="langsw" role="group" aria-label="화면 언어" data-i18n="aria-label" data-ko="화면 언어" data-en="Display language"><button type="button" data-lang="ko" aria-pressed="true">한국어</button><button type="button" data-lang="en" aria-pressed="false">English</button></div></div>
+</aside>
+<div>
+<header class="mobile-top"><a class="brand" href="home.html"><img src="assets/seogi.svg" alt=""><span><b>QuietClerk</b></span></a><span data-when="offline"><span class="chip err"><i aria-hidden="true">!</i><span data-l="ko">엔진 끊김</span><span data-l="en">Offline</span></span></span><span data-when="paused"><span class="chip warn"><i aria-hidden="true">‖</i><span data-l="ko">일시정지</span><span data-l="en">Paused</span></span></span><div class="langsw" role="group" aria-label="화면 언어" data-i18n="aria-label" data-ko="화면 언어" data-en="Display language"><button type="button" data-lang="ko" aria-pressed="true">한국어</button><button type="button" data-lang="en" aria-pressed="false">English</button></div></header>
+<main class="main" id="main" tabindex="-1">
+<div class="wrap">
+<div class="banner off" role="alert" data-when="offline"><span class="ic" aria-hidden="true"><span>!</span></span><div>
+<b><span data-l="ko">엔진과 연결이 끊겼어요.</span><span data-l="en">Lost connection to the engine.</span></b> <span data-l="ko">마지막으로 받은 화면(14:05)을 보여 드려요. 다시 연결되면 버튼이 켜져요.</span><span data-l="en">Showing the last screen received (14:05). Buttons come back when it reconnects.</span>
+<div class="small"><span data-l="ko">Mac을 다시 켰다면 로그인해야 엔진이 돌아요. 그래도 안 되면 터미널에서</span><span data-l="en">If the Mac restarted, the engine runs only after you log in. If it still fails, run</span> <code>quietclerk status</code> <span data-l="ko">를 실행해 보세요.</span><span data-l="en">in Terminal.</span> <span class="code-tag">engine_unreachable</span></div></div>
+<div class="actions"><button type="button" class="btn sm"><span data-l="ko">다시 연결</span><span data-l="en">Reconnect</span></button></div></div>
+
+<div class="topbar"><h1><span data-l="ko">홈</span><span data-l="en">Home</span></h1><span data-when="normal empty error offline"><button type="button" class="btn  needs-engine" ><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg><span data-l="ko">일시정지</span><span data-l="en">Pause</span></button></span><span data-when="paused"><button type="button" class="btn primary needs-engine" ><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg><span data-l="ko">다시 시작</span><span data-l="en">Resume</span></button></span></div>
+<div class="banner warn" role="status" data-when="paused"><span class="ic" aria-hidden="true"><span>‖</span></span><div><b><span data-l="ko">처리를 잠시 멈췄어요.</span><span data-l="en">Processing is paused.</span></b> <span data-l="ko">새 녹음은 계속 받아 두고, 다시 시작하면 차례대로 처리해요.</span><span data-l="en">New recordings still arrive and wait; they're processed in order when you resume.</span></div><div class="actions"><button type="button" class="btn sm needs-engine" ><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg><span data-l="ko">다시 시작</span><span data-l="en">Resume</span></button></div></div>
+<div data-when="normal paused offline"><div class="say "><img src="assets/seogi.svg" alt=""><p class="bubble"><span data-l="ko">오늘 녹음 3개를 받아 회의록 초안 2개를 썼어요. 하나는 지금 받아 적고 있어요.</span><span data-l="en">3 recordings today: 2 drafts written, 1 in progress.</span><small><span data-l="ko">중요한 결정과 할 일은 근거를 확인해 주세요.</span><span data-l="en">Check the evidence for key decisions and tasks.</span></small></p></div></div>
+<div data-when="error"><div class="say "><img src="assets/seogi-worry.svg" alt=""><p class="bubble"><span data-l="ko">공간이 모자라서 잠깐 손을 멈췄어요.</span><span data-l="en">I've stopped for now — the disk is almost full.</span><small><span data-l="ko">아래에서 무엇이, 왜 멈췄는지 보세요.</span><span data-l="en">See below for what stopped and why.</span></small></p></div></div>
+<section class="grid g4" aria-label="상태 요약" data-i18n="aria-label" data-ko="상태 요약" data-en="Status overview">
+<div class="tile" data-when="normal empty"><span class="k"><span data-l="ko">엔진</span><span data-l="en">Engine</span></span><span class="v"><span data-l="ko">켜짐</span><span data-l="en">On</span></span><span class="d"><span data-l="ko">오늘 처리 2 · 대기 1</span><span data-l="en">2 done today · 1 queued</span></span></div><div class="tile" data-when="offline"><span class="k"><span data-l="ko">엔진</span><span data-l="en">Engine</span></span><span class="v"><span class="chip err"><i aria-hidden="true">!</i><span data-l="ko">연결 끊김</span><span data-l="en">Unreachable</span></span></span><span class="d"><span data-l="ko">아래는 14:05에 받은 정보예요</span><span data-l="en">Below is as of 14:05</span></span></div>
+<div class="tile" data-when="paused"><span class="k"><span data-l="ko">엔진</span><span data-l="en">Engine</span></span><span class="v"><span data-l="ko">일시정지</span><span data-l="en">Paused</span></span><span class="d"><span data-l="ko">받기는 계속 · 새 처리 멈춤</span><span data-l="en">Still receiving · no new processing</span></span></div>
+<div class="tile" data-when="error"><span class="k"><span data-l="ko">엔진</span><span data-l="en">Engine</span></span><span class="v"><span data-l="ko">멈춤 · 공간 부족</span><span data-l="en">Stopped · low disk</span></span><span class="d"><span data-l="ko">대기 3</span><span data-l="en">3 queued</span></span></div>
+<div class="tile" data-when="normal paused error offline"><span class="k"><span data-l="ko">폰</span><span data-l="en">Phone</span></span><span class="v"><span class="chip ok"><i aria-hidden="true">✓</i><span data-l="ko">연결됨</span><span data-l="en">Connected</span></span></span><span class="d"><span data-l="ko">갤럭시 · 마지막 받은 녹음 14:31</span><span data-l="en">Galaxy · last recording 14:31</span></span></div>
+<div class="tile" data-when="empty"><span class="k"><span data-l="ko">폰</span><span data-l="en">Phone</span></span><span class="v"><span class="chip ok"><i aria-hidden="true">✓</i><span data-l="ko">연결됨</span><span data-l="en">Connected</span></span></span><span class="d"><span data-l="ko">갤럭시 · 아직 받은 녹음 없음</span><span data-l="en">Galaxy · nothing received yet</span></span></div>
+<div class="tile" data-when="normal paused empty offline"><span class="k"><span data-l="ko">요약 엔진</span><span data-l="en">Summary engine</span></span><span class="v">Claude Code</span><span class="d"><span data-l="ko">Codex 로그인 필요 → 다음 순서로 처리 중</span><span data-l="en">Codex needs login → using the next one</span></span></div>
+<div class="tile" data-when="error"><span class="k"><span data-l="ko">요약 엔진</span><span data-l="en">Summary engine</span></span><span class="v"><span class="chip err"><i aria-hidden="true">!</i><span data-l="ko">로그인 필요</span><span data-l="en">Login needed</span></span></span><span class="d"><span data-l="ko">Codex·Claude Code 모두 로그인 필요</span><span data-l="en">Both Codex and Claude Code need login</span></span></div>
+<div class="tile" data-when="normal paused empty offline"><span class="k"><span data-l="ko">저장 공간</span><span data-l="en">Disk</span></span><span class="v"><span data-l="ko">여유 182GB</span><span data-l="en">182 GB free</span></span><span class="d"><span data-l="ko">2GB 아래면 처리를 멈춰요</span><span data-l="en">Processing stops below 2 GB</span></span></div>
+<div class="tile" data-when="error"><span class="k"><span data-l="ko">저장 공간</span><span data-l="en">Disk</span></span><span class="v"><span class="chip err"><i aria-hidden="true">!</i><span data-l="ko">1.4GB 남음</span><span data-l="en">1.4 GB left</span></span></span><span class="d"><span data-l="ko">2GB 아래라 처리를 멈췄어요</span><span data-l="en">Below 2 GB, processing stopped</span></span></div>
+</section>
+<div class="hg">
+<div class="a-now stack" style="gap:var(--s5)"><section class="card hero" aria-labelledby="now-h" data-when="normal paused offline">
+<div class="card-head"><h2 id="now-h"><span data-l="ko">지금 처리 중</span><span data-l="en">Processing now</span></h2><span class="chip run"><i aria-hidden="true">●</i><span data-l="ko">처리 중</span><span data-l="en">Processing</span></span></div>
+<div class="stack">
+<div><div class="t" style="font-weight:800;color:var(--ink);font-size:var(--f-md)">음성 261110_143000.m4a</div>
+<div class="muted small"><span data-l="ko">녹음 11월 10일 14:30 · 41분 12초 · 언어 자동 감지</span><span data-l="en">Recorded Nov 10, 14:30 · 41 min 12 s · language auto</span></div></div>
+<div class="dots" aria-hidden="true"><span class="done" title="Convert"></span><span class="done" title="Speakers"></span><span class="done" title="Language"></span><span class="now" title="Transcribe"></span><span class="" title="Second pass"></span><span class="" title="Turns"></span><span class="" title="Correct"></span><span class="" title="Classify"></span><span class="" title="Summarize"></span><span class="" title="Publish"></span></div>
+<p aria-live="polite" style="color:var(--ink)"><b><span data-l="ko">받아쓰기</span><span data-l="en">Transcribe</span></b> · <span data-l="ko">10단계 중 4번째</span><span data-l="en">step 4 of 10</span></p>
+<dl class="kv num"><dt><span data-l="ko">이 단계 경과</span><span data-l="en">This step</span></dt><dd>2:48</dd><dt><span data-l="ko">전체 경과</span><span data-l="en">Total elapsed</span></dt><dd>3:10</dd><dt><span data-l="ko">마지막 진척</span><span data-l="en">Last progress</span></dt><dd>42%</dd></dl>
+<p class="small muted"><span data-l="ko">남은 시간은 짐작하지 않아요. 단계와 지나간 시간만 보여 드려요.</span><span data-l="en">No time-left guesses — only the stage and time elapsed.</span></p>
+</div>
+<div class="row"><a class="btn sm" href="jobs.html"><span data-l="ko">작업 자세히</span><span data-l="en">Job details</span></a><button type="button" class="btn sm danger needs-engine" ><span data-l="ko">이 녹음 제외</span><span data-l="en">Exclude this recording</span></button><span class="spacer"></span><span class="small muted"><span data-l="ko">다음 차례: 음성 261110_160000.m4a</span><span data-l="en">Next: 음성 261110_160000.m4a</span></span></div>
+<p class="small muted" data-when="paused"><span data-l="ko">일시정지해도 지금 작업은 끝까지 처리해요.</span><span data-l="en">Pausing lets the current job finish.</span></p>
+</section>
+<section class="card alert" data-when="error" aria-labelledby="stop-h">
+<div class="card-head"><h2 id="stop-h"><span data-l="ko">처리를 멈췄어요</span><span data-l="en">Processing stopped</span></h2><span class="chip warn"><i aria-hidden="true">!</i><span data-l="ko">막힘 · 공간 부족</span><span data-l="en">Blocked · low disk</span></span></div>
+<dl class="problem">
+<dt><span data-l="ko">무엇이</span><span data-l="en">What</span></dt><dd><span data-l="ko">새 녹음 받기와 처리를 모두 멈췄어요. 녹음 3개가 기다려요.</span><span data-l="en">Receiving and processing are both on hold. 3 recordings are waiting.</span></dd>
+<dt><span data-l="ko">왜</span><span data-l="en">Why</span></dt><dd><span data-l="ko">Mac의 여유 공간이 1.4GB예요. 2GB보다 적으면 중간 파일을 쓰다 실패할 수 있어 멈춰요.</span><span data-l="en">The Mac has 1.4 GB free. Below 2 GB, writing working files can fail, so processing waits.</span></dd>
+<dt><span data-l="ko">어떻게</span><span data-l="en">How</span></dt><dd class="how"><span><span data-l="ko">공간을 2GB 넘게 비우면 자동으로 다시 시작해요. 이 화면에서 따로 누를 건 없어요.</span><span data-l="en">Free more than 2 GB and it resumes on its own. Nothing to press here.</span></span><div class="actions"><a class="btn sm" href="settings.html#retention"><span data-l="ko">보존 설정 보기</span><span data-l="en">Retention settings</span></a></div></dd>
+<dt><span data-l="ko">상태</span><span data-l="en">Status</span></dt><dd class="row"><span class="code-tag">blocked_reason=disk_low</span></dd>
+</dl>
+</section><section class="card" data-when="empty">
+<div class="empty"><img src="assets/seogi.svg" alt="">
+<p class="bubble"><span data-l="ko">아직 받은 녹음이 없어요.</span><span data-l="en">No recordings yet.</span></p>
+<p class="muted"><span data-l="ko">폰 녹음 앱에서 녹음을 저장하면 Syncthing이 이 Mac으로 옮겨 와요. 도착하면 여기서 단계별로 보여 드릴게요. 5분보다 짧은 녹음은 건너뛰어요.</span><span data-l="en">Save a recording in your phone's recorder app and Syncthing copies it to this Mac. Once it arrives you'll see each step here. Recordings under 5 minutes are skipped.</span></p>
+<div class="actions"><a class="btn" href="wizard-5.html"><span data-l="ko">폰 연결 확인</span><span data-l="en">Check phone connection</span></a><a class="btn" href="backlog.html"><span data-l="ko">폰에 있던 녹음 보기</span><span data-l="en">See older recordings</span></a></div></div>
+</section></div>
+<div class="a-att stack" style="gap:var(--s4)"><section class="stack" aria-labelledby="att-h" data-when="normal paused offline">
+<h2 id="att-h"><span data-l="ko">확인해 주세요</span><span data-l="en">Needs a look</span> <span class="muted">2</span></h2>
+<article class="card tight">
+<div class="card-head"><h3>음성 261110_113000.m4a</h3><span class="chip idle"><i aria-hidden="true">↷</i><span data-l="ko">건너뜀</span><span data-l="en">Skipped</span></span></div>
+<dl class="problem">
+<dt><span data-l="ko">무엇이</span><span data-l="en">What</span></dt><dd><span data-l="ko">처리하지 않고 건너뛰었어요.</span><span data-l="en">Skipped without processing.</span></dd>
+<dt><span data-l="ko">왜</span><span data-l="en">Why</span></dt><dd><span data-l="ko">48초짜리라 최소 길이(1분)보다 짧아요.</span><span data-l="en">It is 48 s long, under the 1-minute minimum.</span></dd>
+<dt><span data-l="ko">어떻게</span><span data-l="en">How</span></dt><dd class="how"><div class="actions"><button type="button" class="btn sm primary needs-engine" ><span data-l="ko">이 녹음 처리하기</span><span data-l="en">Process this recording</span></button></div></dd>
+<dt><span data-l="ko">상태</span><span data-l="en">Status</span></dt><dd class="row"><span class="code-tag">skipped:too_short</span></dd>
+</dl>
+</article>
+<article class="card tight">
+<div class="card-head"><h3><span data-l="ko">Codex 로그인이 끊겼어요</span><span data-l="en">Codex is signed out</span></h3><span class="chip warn"><i aria-hidden="true">!</i><span data-l="ko">로그인 필요</span><span data-l="en">Login needed</span></span></div>
+<dl class="problem">
+<dt><span data-l="ko">무엇이</span><span data-l="en">What</span></dt><dd><span data-l="ko">Codex로 요약하지 못했어요. 대신 순서상 다음인 Claude Code로 처리하고 있어요.</span><span data-l="en">Codex could not summarise, so the next provider in your order, Claude Code, is handling it.</span></dd>
+<dt><span data-l="ko">왜</span><span data-l="en">Why</span></dt><dd><span data-l="ko">Codex 인증이 만료됐어요.</span><span data-l="en">The Codex sign-in expired.</span></dd>
+<dt><span data-l="ko">어떻게</span><span data-l="en">How</span></dt><dd class="how"><span><span data-l="ko">터미널에서 아래 명령을 실행해 로그인한 뒤 확인을 눌러 주세요.</span><span data-l="en">Run this in Terminal to sign in, then press Check.</span></span><code>codex login</code><div class="actions"><button type="button" class="btn sm needs-engine" ><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg><span data-l="ko">다시 확인</span><span data-l="en">Check again</span></button></div></dd>
+<dt><span data-l="ko">상태</span><span data-l="en">Status</span></dt><dd class="row"><span class="code-tag">AuthExpired</span></dd>
+</dl>
+</article>
+</section>
+<section class="stack" aria-labelledby="att2-h" data-when="error">
+<h2 id="att2-h"><span data-l="ko">확인해 주세요</span><span data-l="en">Needs a look</span> <span class="muted">1</span></h2>
+<article class="card tight">
+<div class="card-head"><h3><span data-l="ko">요약 엔진에 로그인이 필요해요</span><span data-l="en">Summary engines need sign-in</span></h3><span class="chip warn"><i aria-hidden="true">!</i><span data-l="ko">막힘 · 로그인</span><span data-l="en">Blocked · login</span></span></div>
+<dl class="problem">
+<dt><span data-l="ko">무엇이</span><span data-l="en">What</span></dt><dd><span data-l="ko">녹음 2개가 교정 단계 앞에서 기다려요. 받아쓰기까지는 끝났어요.</span><span data-l="en">2 recordings are waiting before the Correct step. Transcription is done.</span></dd>
+<dt><span data-l="ko">왜</span><span data-l="en">Why</span></dt><dd><span data-l="ko">켜 둔 요약 엔진(Codex, Claude Code)이 모두 로그인이 풀렸어요.</span><span data-l="en">Every enabled summary engine (Codex, Claude Code) is signed out.</span></dd>
+<dt><span data-l="ko">어떻게</span><span data-l="en">How</span></dt><dd class="how"><span><span data-l="ko">하나라도 로그인하면 이어서 처리해요. 시간이 지나도 저절로 풀리지 않아요.</span><span data-l="en">Sign in to either one and processing resumes. It will not clear on its own.</span></span><code>codex login</code><code>claude</code><div class="actions"><button type="button" class="btn sm needs-engine" ><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg><span data-l="ko">다시 확인</span><span data-l="en">Check again</span></button><a class="btn sm" href="settings.html#providers"><span data-l="ko">요약 엔진 설정</span><span data-l="en">Summary engine settings</span></a></div></dd>
+<dt><span data-l="ko">상태</span><span data-l="en">Status</span></dt><dd class="row"><span class="code-tag">retry_wait</span><span class="code-tag">blocked_reason=auth</span></dd>
+</dl>
+</article>
+</section>
+<section class="card tight" data-when="empty"><h2><span data-l="ko">처음이라면</span><span data-l="en">Getting started</span></h2><p class="small"><span data-l="ko">시험 녹음을 하나 해 보세요. 받기 → 받아쓰기 → 요약 → 노트 쓰기까지 이 화면에서 따라갈 수 있어요.</span><span data-l="en">Try a test recording. You can follow it here from arrival to transcription, summary and note.</span></p></section>
+</div>
+<div class="a-today"><section class="list" aria-labelledby="today-h" data-when="normal paused error offline">
+<div class="list-head"><h2 id="today-h"><span data-l="ko">오늘 쓴 회의록</span><span data-l="en">Minutes drafted today</span></h2><span class="muted">2</span><a class="btn ghost sm" href="notes.html"><span data-l="ko">전체 보기</span><span data-l="en">View all</span></a></div>
+<div class="item"><div><a class="t" href="note.html">책마루 앱 홈 화면 개편과 대출 연장 기능 개선</a>
+<div class="meta"><span>10:00</span><span><span data-l="ko">회의</span><span data-l="en">Meeting</span></span><span><span data-l="ko">2분 37초</span><span data-l="en">2 min 37 s</span></span><span><span data-l="ko">한국어</span><span data-l="en">Korean</span></span></div></div>
+<div class="side-r"><span class="chip line"><i aria-hidden="true">✎</i><span data-l="ko">초안</span><span data-l="en">Draft</span></span><span class="chip warn"><i aria-hidden="true">!</i><span data-l="ko">확인 필요 2</span><span data-l="en">2 to check</span></span></div></div>
+<div class="item"><div><a class="t" href="notes.html">Q4 vendor shortlist review</a>
+<div class="meta"><span>09:00</span><span><span data-l="ko">회의</span><span data-l="en">Meeting</span></span><span><span data-l="ko">32분</span><span data-l="en">32 min</span></span><span><span data-l="ko">영어</span><span data-l="en">English</span></span></div></div>
+<div class="side-r"><span class="chip line"><i aria-hidden="true">✎</i><span data-l="ko">초안</span><span data-l="en">Draft</span></span></div></div>
+</section></div>
+</div>
+</div>
+</main>
+</div>
+</div>
+<nav class="tabbar" aria-label="주 메뉴" data-i18n="aria-label" data-ko="주 메뉴" data-en="Main menu"><a href="home.html" aria-current="page"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span data-l="ko">홈</span><span data-l="en">Home</span></a><a href="notes.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span data-l="ko">회의록</span><span data-l="en">Notes</span></a><a href="jobs.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg><span data-l="ko">작업</span><span data-l="en">Jobs</span></a><a href="backlog.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10 6h4"/><path d="M12 10v6m-3-3 3 3 3-3"/></svg><span data-l="ko">기존 녹음</span><span data-l="en">Older recordings</span></a><a href="settings.html"><svg class="" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span data-l="ko">설정</span><span data-l="en">Settings</span></a></nav>
+<div id="live" class="sr-only" aria-live="polite"></div>
+<details class="proto"><summary><span data-l="ko">시안 상태 (제품 화면 아님)</span><span data-l="en">Mock states (not product UI)</span></summary><nav><a href="?state=normal" data-state="normal"><span data-l="ko">기본</span><span data-l="en">Normal</span></a><a href="?state=empty" data-state="empty"><span data-l="ko">빈 상태</span><span data-l="en">Empty</span></a><a href="?state=error" data-state="error"><span data-l="ko">오류</span><span data-l="en">Error</span></a><a href="?state=offline" data-state="offline"><span data-l="ko">엔진 꺼짐</span><span data-l="en">Engine offline</span></a><a href="?state=paused" data-state="paused"><span data-l="ko">일시정지</span><span data-l="en">Paused</span></a></nav></details>
+</body>
+</html>

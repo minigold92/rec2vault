@@ -6,3 +6,5 @@ __pycache__/
 *.mp3
 .env
 !docs/examples/*/*.m4a
+app/src-tauri/target/
+node_modules/

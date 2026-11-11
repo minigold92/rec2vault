@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>설정 3/6 · 회의록 위치 · QuietClerk</title>
+<meta name="qc-title-ko" content="설정 3/6 · 회의록 위치 · QuietClerk">
+<meta name="qc-title-en" content="Setup 3/6 · Notes folder · QuietClerk">
+<link rel="stylesheet" href="assets/qc.css">
+<script src="assets/qc.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main"><span data-l="ko">본문으로 건너뛰기</span><span data-l="en">Skip to content</span></a>
+<div class="wiz">
+<header class="wiz-top"><a class="brand" href="home.html"><img src="assets/seogi.svg" alt=""><span><b>QuietClerk</b><span><span data-l="ko">맥서기</span><span data-l="en">Meeting minutes on your Mac</span></span></span></a><div class="langsw" role="group" aria-label="화면 언어" data-i18n="aria-label" data-ko="화면 언어" data-en="Display language"><button type="button" data-lang="ko" aria-pressed="true">한국어</button><button type="button" data-lang="en" aria-pressed="false">English</button></div></header>
+<ol class="stepper" aria-label="설정 단계" data-i18n="aria-label" data-ko="설정 단계" data-en="Setup steps"><li class="done"><span class="n">1/6</span><span class="s"><span data-l="ko">환경 점검</span><span data-l="en">Check Mac</span></span><span class="sr-only"><span data-l="ko">완료</span><span data-l="en">done</span></span></li><li class="done"><span class="n">2/6</span><span class="s"><span data-l="ko">모델 받기</span><span data-l="en">Models</span></span><span class="sr-only"><span data-l="ko">완료</span><span data-l="en">done</span></span></li><li class="now" aria-current="step"><span class="n">3/6</span><span class="s"><span data-l="ko">회의록 위치</span><span data-l="en">Notes folder</span></span><span class="sr-only"><span data-l="ko">지금</span><span data-l="en">current</span></span></li><li class=""><span class="n">4/6</span><span class="s"><span data-l="ko">요약 엔진</span><span data-l="en">Summary engine</span></span><span class="sr-only"></span></li><li class=""><span class="n">5/6</span><span class="s"><span data-l="ko">폰 연결</span><span data-l="en">Phone</span></span><span class="sr-only"></span></li><li class=""><span class="n">6/6</span><span class="s"><span data-l="ko">시험</span><span data-l="en">Test run</span></span><span class="sr-only"></span></li></ol>
+<main id="main" class="stack" style="gap:var(--s5)" tabindex="-1">
+<div class="banner off" role="alert" data-when="offline"><span class="ic" aria-hidden="true"><span>!</span></span><div>
+<b><span data-l="ko">엔진과 연결이 끊겼어요.</span><span data-l="en">Lost connection to the engine.</span></b> <span data-l="ko">마지막으로 받은 화면(14:05)을 보여 드려요. 다시 연결되면 버튼이 켜져요.</span><span data-l="en">Showing the last screen received (14:05). Buttons come back when it reconnects.</span>
+<div class="small"><span data-l="ko">Mac을 다시 켰다면 로그인해야 엔진이 돌아요. 그래도 안 되면 터미널에서</span><span data-l="en">If the Mac restarted, the engine runs only after you log in. If it still fails, run</span> <code>quietclerk status</code> <span data-l="ko">를 실행해 보세요.</span><span data-l="en">in Terminal.</span> <span class="code-tag">engine_unreachable</span></div></div>
+<div class="actions"><button type="button" class="btn sm"><span data-l="ko">다시 연결</span><span data-l="en">Reconnect</span></button></div></div>
+<h1><span data-l="ko">3. 회의록 위치</span><span data-l="en">3. Notes folder</span></h1>
+<div class="say "><img src="assets/seogi.svg" alt=""><p class="bubble"><span data-l="ko">회의록을 어디에 둘까요? Obsidian에 등록된 볼트를 찾아 봤어요.</span><span data-l="en">Where should the minutes go? Here are the Obsidian vaults on this Mac.</span></p></div>
+<fieldset class="stack" style="border:0;padding:0;margin:0" data-when="normal error offline"><legend class="sr-only"><span data-l="ko">볼트 고르기</span><span data-l="en">Choose a vault</span></legend>
+<label class="option "><input type="radio" name="vault" checked class="needs-engine"><span style="min-width:0"><b>sync</b><span class="help mono" style="font-family:var(--mono);overflow-wrap:anywhere;word-break:break-all">~/sync</span><span class="help"><span data-l="ko">최근에 연 볼트 · 이전 형식 회의록 46개가 있어요</span><span data-l="en">Most recently opened · contains 46 notes in the old format</span></span></span></label>
+<label class="option "><input type="radio" name="vault"  class="needs-engine"><span style="min-width:0"><b>업무노트</b><span class="help mono" style="font-family:var(--mono);overflow-wrap:anywhere;word-break:break-all">~/Documents/업무노트</span><span class="help"><span data-l="ko">볼트</span><span data-l="en">Vault</span></span></span></label>
+<label class="option "><input type="radio" name="vault"  class="needs-engine"><span style="min-width:0"><b>Personal</b><span class="help mono" style="font-family:var(--mono);overflow-wrap:anywhere;word-break:break-all">~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Personal</span><span class="help"><span data-l="ko">iCloud 볼트 · 동기화가 늦으면 노트가 늦게 보일 수 있어요</span><span data-l="en">iCloud vault · notes may appear late if iCloud is slow</span></span></span></label>
+<label class="option"><input type="radio" name="vault" class="needs-engine"><span style="flex:1;min-width:0"><b><span data-l="ko">다른 폴더</span><span data-l="en">Another folder</span></b><span class="help"><span data-l="ko">Obsidian 없이 마크다운 폴더로 써도 돼요.</span><span data-l="en">A plain Markdown folder works too.</span></span></span></label>
+</fieldset>
+<section class="card" data-when="empty"><div class="empty" style="padding:var(--s4)"><img src="assets/seogi.svg" alt=""><p class="bubble"><span data-l="ko">Obsidian 볼트를 찾지 못했어요.</span><span data-l="en">No Obsidian vaults found.</span></p><p class="muted small"><span data-l="ko">Obsidian 없이도 돼요. 회의록은 마크다운 파일이라 아무 폴더에나 둘 수 있어요.</span><span data-l="en">That's fine. Minutes are Markdown files, so any folder works.</span></p></div></section>
+<div class="field" style="border-top:0"><div class="lab"><label for="sub"><span data-l="ko">볼트 안 폴더</span><span data-l="en">Folder inside the vault</span></label><span class="help"><span data-l="ko">없으면 만들어요.</span><span data-l="en">Created if missing.</span></span></div>
+<div class="ctl"><input id="sub" class="input needs-engine" value="회의록" aria-describedby="sub-prev sub-err" data-when="normal empty offline"><input id="sub2" class="input needs-engine" value="회의록" aria-invalid="true" aria-describedby="sub-err" data-when="error">
+<p class="err-text" id="sub-err" data-when="error"><span data-l="ko">이 폴더에 쓸 수 없어요: 권한이 없어요. 다른 폴더를 고르거나 Finder에서 권한을 확인해 주세요.</span><span data-l="en">Can't write to this folder: permission denied. Pick another folder or check permissions in Finder.</span> <span class="code-tag">400 output</span></p>
+<p class="small muted" id="sub-prev"><span data-l="ko">예: </span><span data-l="en">e.g. </span><code>~/sync/회의록/2026-11-10_책마루_앱_홈_화면_개편과_대출_연장_기능_개선_1000.md</code></p></div></div>
+<p class="small muted"><span data-l="ko">폴더 선택 창은 Mac 앱에서만 열려요. 브라우저에서는 위 후보를 고르거나 경로를 직접 적어 주세요.</span><span data-l="en">The folder picker opens only in the Mac app. In a browser, pick a candidate above or type a path.</span></p>
+<div class="banner info" data-when="normal offline"><span class="ic" aria-hidden="true"><span>i</span></span><div><b><span data-l="ko">이 볼트에 이전 형식 회의록이 46개 있어요.</span><span data-l="en">This vault has 46 notes in the old format.</span></b> <span data-l="ko">새 형식으로 옮기기 전까지는 볼트에 새 회의록을 쓰지 않고 따로 보관해요. 옮기기는 미리보기를 보고 동의한 뒤에만 해요.</span><span data-l="en">Until they're converted, new minutes are kept aside instead of written to the vault. Conversion runs only after you review a preview and agree.</span></div><div class="actions"><a class="btn sm" href="migrate.html"><span data-l="ko">미리보기</span><span data-l="en">Preview</span></a></div></div>
+</main>
+<footer class="wiz-foot"><a class="btn" href="wizard-2.html"><span data-l="ko">이전</span><span data-l="en">Back</span></a><span class="spacer"></span><a class="btn primary needs-engine" href="wizard-4.html"><span data-l="ko">다음: 요약 엔진</span><span data-l="en">Next: summary engine</span></a></footer>
+</div>
+<div id="live" class="sr-only" aria-live="polite"></div>
+<details class="proto"><summary><span data-l="ko">시안 상태 (제품 화면 아님)</span><span data-l="en">Mock states (not product UI)</span></summary><nav><a href="?state=normal" data-state="normal"><span data-l="ko">기본</span><span data-l="en">Normal</span></a><a href="?state=empty" data-state="empty"><span data-l="ko">빈 상태</span><span data-l="en">Empty</span></a><a href="?state=error" data-state="error"><span data-l="ko">오류</span><span data-l="en">Error</span></a><a href="?state=offline" data-state="offline"><span data-l="ko">엔진 꺼짐</span><span data-l="en">Engine offline</span></a></nav></details>
+</body>
+</html>
