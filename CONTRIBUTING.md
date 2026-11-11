@@ -71,7 +71,8 @@ The opt-in `scripts/probe_login_service.py` exercises real launchd and cleans it
 it refuses an existing local engine and is never part of pytest. Build its Rust entrypoint with
 `cargo build --manifest-path app/src-tauri/Cargo.toml --release --target aarch64-apple-darwin --example login_service_probe`.
 The colored app icon comes from `quietclerk/server/static/seogi.svg` (`tauri icon … --fit contain`);
-`app/src-tauri/icons/tray.svg` is its monochrome outline, rendered with `tauri icon … --png 44`.
+the menu bar icon `app/src-tauri/icons/tray.png` (a Mac mini with cat ears, template image) is drawn by
+`scripts/render_tray_icon.py`; edit the geometry there and re-run it rather than editing the PNG.
 For release builds only, CI uses the two updater signing secrets and creates signed update artifacts.
 Keep Cargo, npm, Tauri and CHANGELOG versions aligned before pushing a `v*` tag.
 
