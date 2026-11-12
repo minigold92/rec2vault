@@ -103,18 +103,14 @@ async function step2({content, footer}) {
       say('ok', L('받아쓰기 모델 4개, 약 5.2GB를 받아요. 한 번 받아 두면 처리할 때 인터넷이 필요 없어요.', 'Four transcription models, about 5.2 GB. Once downloaded, processing works offline.'),
         L('끊겨도 받은 데까지는 남아 있어서 이어받을 수 있어요.', 'If the download drops, it resumes from where it stopped.')),
       h('section', {class: 'list', 'aria-labelledby': 'mh'},
-        h('div', {class: 'list-head'}, h('h2', {id: 'mh'}, L('모델', 'Models')), chip('idle', '—', L('아직 지원 안 함', 'Not supported yet'))),
+        h('div', {class: 'list-head'}, h('h2', {id: 'mh'}, L('모델', 'Models'))),
         h('div', {class: 'item full'}, h('div', {class: 'stack'},
-          h('p', {class: 'small'}, L('모델 목록과 받는 진행을 알려 주는 API가 아직 없어서, 여기서는 받기를 시작하거나 진행을 볼 수 없어요. 지금은 터미널에서 받아요:',
-            'There is no API yet that lists the models or reports download progress, so this screen can\'t start a download or show progress. For now download in Terminal:'),),
+          h('p', {class: 'small'}, L('이 화면에서는 모델을 받거나 진행을 볼 수 없어요. 터미널에서 받아 주세요:', 'This screen can\'t download the models or show progress. Download them in Terminal:')),
           h('div', {class: 'row'}, h('code', {class: 'grow'}, command),
             btn({small: true, icon: 'copy', label: L('복사', 'Copy'), on: {click: async () => {
               try { await navigator.clipboard.writeText(command); announce(L('복사했어요', 'Copied')); } catch (_) { /* clipboard blocked */ }
-            }}})),
-          h('div', {class: 'row'}, code('GET /api/setup/models'), code('POST /api/setup/models/download'))))),
-      h('div', {class: 'row'}, btn({kind: 'primary', disabled: true, describedby: 'dl-why', label: L('받기 시작', 'Start download')}),
-        h('span', {class: 'small muted', id: 'dl-why'}, L('받기 API가 생기면 켜져요. Hugging Face에서 받고, 녹음은 보내지 않아요.', 'Turns on once the download API exists. Downloads from Hugging Face; no recordings are sent.'))),
-      h('p', {class: 'small muted'}, L('남은 시간은 회선마다 달라 짐작하지 않아요. 받은 비율만 보여 드려요.', 'Time left depends on your connection, so we show only the share downloaded.')));
+            }}}))))),
+      h('p', {class: 'small muted'}, L('Hugging Face에서 받고, 녹음은 보내지 않아요. 남은 시간은 회선마다 달라 짐작하지 않아요.', 'Downloads come from Hugging Face; no recordings are sent. Time left depends on your connection, so we don\'t guess it.')));
     footerBar(footer, {step: 2, nextHref: '/setup/3', nextLabel: L('다음: 회의록 위치', 'Next: notes folder'),
       why: L('모델이 받아졌는지 화면에서 확인할 수 없어서, 이 단계는 확인하지 않고 넘어가요.', 'The screen can\'t check whether the models are downloaded, so this step is not verified.')});
     syncEngineControls(content);

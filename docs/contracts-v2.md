@@ -482,8 +482,8 @@ class Provider(Protocol):
 |---|---|---|
 | `POST /api/session` | `{token}` | 204 + 쿠키 / 401 |
 | `GET /api/status` | — | 엔진·`engine_version`·`installation_method`·`last_updated_at`·일시정지·현재 작업·단계·경과·제공자 상태·폰 연결(인증 필요) |
-| `GET /api/jobs?status=&limit=&cursor=` | — | 목록 |
-| `GET /api/jobs/{id}` | — | 상세, 실행·단계 이력(보낸 필드 포함) |
+| `GET /api/jobs?status=&limit=&cursor=` | — | 목록. 각 항목에 `title`(게시한 회의록의 제목 = 현재 실행의 분류 결과 `meta.title`, 없으면 `null`)을 덧붙인다. 화면은 제목을 크게, 파일 이름(`source_name`)을 작게 보이고 제목이 없으면 파일 이름만 보인다 |
+| `GET /api/jobs/{id}` | — | 상세(`job`에도 `title`), 실행·단계 이력(보낸 필드 포함) |
 | `POST /api/jobs/{id}/process` | `{mode}` | 202 / 409 `{status}` / 404 |
 | `GET /api/jobs/{id}/convert-note` | — | 무변경 미리보기(현재/새 경로·새 요약·보존할 본문·실행 ID·토큰) / 409 `{error,reason,detail}` |
 | `POST /api/jobs/{id}/convert-note` | `{consent:true, preview_token}` | 200 `{job_id,note_path,backup_path,status:"done"}` / 400(동의 없음) / 409(결과 없음·변경·충돌) |
