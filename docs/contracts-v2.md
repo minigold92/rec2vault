@@ -400,7 +400,7 @@ Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에
 - 명령 세부(D 구현, 2026-11-10): `python -m quietclerk.notes migrate --preview`는 아무것도 바꾸지 않고 JSON(전체 대응표·소유권 초기화·충돌)을 출력, `--apply`는 `--consent` 없이는 거부. 백업 `<root>/note-backups/<UTC 시각>/`, 진행 기록 `<root>/note-backups/migration.json`. 사용자 정의 키·프로젝트 값은 보존하고 비차단 충돌로 보고. 알 수 없는 enum 값·식별 불일치·같은 작업의 중복 노트는 그 노트의 이행을 차단하고 보고.
 - **개별 본문 교체**: `GET /api/jobs/{id}/convert-note`는 현재/새 경로, 새 요약, 이전 본문(UTF-8 표시 및 정확한 바이트의 Base64), 최신 실행 ID와 미리보기 토큰을 반환하며 파일·DB를 바꾸지 않는다. `POST`는 `{consent:true, preview_token:"…"}`가 필수다. 기존 9장 세션·Origin·CSRF·Idempotency-Key 규칙을 적용한다. 미리보기 이후 노트·작업·산출물이 바뀌면 409이고 다시 미리보기한다.
 - 최신 실행(실패한 실행 포함)의 `turns`, `correct`, `classify`, `summarize` 산출물만 사용한다. 메타 `ok`, 단계·입력 연결·SHA를 검증하고 없거나 손상되면 이유와 함께 거절한다. LLM·모델은 호출하지 않는다.
-- 교체 직전 노트를 볼트 밖 `<root>/note-backups/<UTC 시각>-convert/`에 fsync 백업하고, 기존 merge 규칙으로 사용자 frontmatter 값을 유지한다. 이전 본문 전체는 `## 메모`/`## Notes` 아래 접힌 note callout에 안전한 텍스트로 보관한다. HTML·Obsidian/플러그인·Markdown 문법은 비활성화하고 원래 바이트는 callout 안 Base64로도 보관한다(줄끝·마지막 개행까지 복원 가능).
+- 교체 직전 노트를 볼트 밖 `<root>/note-backups/<UTC 시각>-convert/`에 fsync 백업하고, 기존 merge 규칙으로 사용자 frontmatter 값을 유지한다. 이전 본문 전체는 `## 메모`/`## Notes` 아래 접힌 note callout에 안전한 텍스트로 보관한다. HTML·Obsidian/플러그인·Markdown 문법은 비활성화한다. 정확한 원래 바이트는 볼트 밖 백업이 보관한다(노트 안에 Base64 덩어리를 넣지 않는다, 2026-11-12 메인 검토).
 - 새 이름은 `날짜_시각_제목`이며 충돌 시 교체하지 않는다. 7.4 저널로 이름 이동·본문 교체를 복구하고 기존 hook으로 데일리 링크·검색을 갱신한다. 커밋 시 `done`, 대기 사유 제거, 개별 migrated 표식 제거, `legacy=0`으로 이후 보통 재게시를 허용한다.
 - **2026-11-12 운영 발견**: 이행된 노트의 게시 차단이 일반 재시도 실패로 분류되어 같은 모델·텍스트 단계를 반복 실행했다. 노트 충돌은 사용자 조치 대기로 고치고, 실패 실행의 검증된 산출물 재사용 및 동의 기반 개별 교체를 명시한다. 이 문서는 실제 회의 내용·식별자를 포함하지 않는다.
 

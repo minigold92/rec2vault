@@ -353,8 +353,8 @@ damaged results are refused, and an intervening edit requires a fresh preview.
 
 Immediately before replacement the original file is backed up to `<root>/note-backups/<UTC time>-convert/`,
 outside the vault. User-owned properties stay; the whole old body goes under `## Notes` in a folded callout
-as inert text (links, code, embeds and plugins cannot run). The callout also keeps Base64 of the original
-bytes, including line endings. One note remains at `date_time_title.md`; the publication journal recovers
+as inert text (links, code, embeds and plugins cannot run). The exact original file stays in the outside-vault
+backup. One note remains at `date_time_title.md`; the publication journal recovers
 interrupted changes, daily links and search are updated, and later re-summaries publish normally.
 
 For authenticated automation, `GET /api/jobs/{id}/convert-note` returns the preview and `preview_token`.

@@ -117,12 +117,11 @@ def preview(con, settings, job_id):
 def preserved_body(body, language, now):
     title = f'Previous format body ({now:%Y-%m-%d} replaced)' if language == 'en' else f'이전 형식 본문 ({now:%Y-%m-%d} 교체)'
     # Every ASCII punctuation character becomes an entity before Markdown/plugins see it.
-    # Base64 retains the exact original bytes, including CRLF and a missing final newline.
+    # The exact original bytes live in the outside-vault backup; the vault copy is for reading.
     text = body.decode('utf-8', errors='replace')
     inert = ''.join(c if c.isalnum() or c in ' \t\n' else f'&#x{ord(c):x};' for c in text)
     lines = '\n'.join('> ' + line for line in inert.split('\n'))
-    encoded = base64.b64encode(body).decode('ascii')
-    return f'\n> [!note]- {title}\n{lines}\n>\n> Original bytes (Base64): {encoded}\n'.encode('utf-8')
+    return f'\n> [!note]- {title}\n{lines}\n'.encode('utf-8')
 
 
 def apply(con, settings, job_id, *, consent=False, preview_token=None):

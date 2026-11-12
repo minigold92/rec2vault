@@ -107,7 +107,7 @@ def test_conversion_preserves_backup_fields_body_and_allows_rerender(migrated):
     assert {key: props[key] for key in ('title', 'division', 'status', 'project', 'attendees', 'custom')} == {
         'title': 'User title', 'division': 'personal', 'status': 'reviewed', 'project': [], 'attendees': ['Fictional attendee'], 'custom': 12}
     assert b'> [!note]- Previous format body (' in rendered
-    assert base64.b64encode(body) in rendered
+    assert b'Base64' not in rendered
     assert b'![[unsafe]]' not in rendered and b'```dataviewjs' not in rendered and b'<iframe' not in rendered and b'<%' not in rendered
     assert rendered.count(b'\n## Notes\n') == 1
     updated = store.job(con, row['job_id'])
@@ -188,7 +188,7 @@ conversion.apply(con, settings, job_id, consent=True, preview_token=token)
     if phase == 'renamed':
         assert current['status'] == 'done' and current['legacy'] == 0
         assert target.is_file() and not source.exists()
-        assert base64.b64encode(body) in target.read_bytes()
+        assert b'> [!note]- ' in target.read_bytes()
     else:
         assert current['status'] == row['status'] and current['blocked_reason'] == row['blocked_reason']
         assert source.read_bytes() == saved and not target.exists()
