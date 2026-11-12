@@ -56,6 +56,9 @@ export function describe(job, env = {}) {
   const settings = env.settings || {};
   const length = job.duration_sec ? dur(job.duration_sec) : null;
   const signedOut = (env.providers || []).filter((p) => p.logged_in === false && (settings['providers.order'] || []).includes(p.name));
+  if (job.legacy && job.note_path && ['done', 'failed', 'retry_wait'].includes(job.status)) {
+    return blocked({...job, blocked_reason: 'note_update_blocked'}, signedOut, {codes: [], actions: []});
+  }
   const base = {codes: [], actions: [act.exclude()]};
   switch (job.status) {
     case 'running':
@@ -81,6 +84,21 @@ function blocked(job, signedOut, base) {
   const codes = ['retry_wait', `blocked_reason=${job.blocked_reason}`];
   const holding = L('교정·요약 단계 앞에서 기다려요. 받아쓰기까지는 끝났어요.', 'Waiting before Correct and Summarize. Transcription is done.');
   switch (job.blocked_reason) {
+    case 'note_update_blocked':
+      return {...base, group: 'blocked', chip: {kind: 'warn', glyph: '!', label: L('동의 대기 · 노트 교체', 'Awaiting consent · replace note')}, codes,
+        what: L('새 결과는 보관했지만 이전 형식 노트를 덮어쓰지 않았어요.', 'The new result was kept; the old-format note was not overwritten.'),
+        why: L('이전 본문과 직접 쓴 메모를 지키기 위해 멈췄어요. 자동 재시도하지 않고 시도 횟수도 쓰지 않아요.',
+          'Stopped to protect the old body and your notes. No automatic retry and no attempt used.'),
+        how: L('미리보기를 확인하고 새 형식으로 바꿔 주세요. 기존 본문 전체는 메모 칸에 보존해요.',
+          'Review the preview, then convert to the new format. The whole old body is kept under Notes.'),
+        actions: [{id: 'convert-note', label: L('새 형식으로 바꾸기', 'Convert to new format'), kind: 'primary'}, act.exclude()]};
+    case 'note_conflict':
+      return {...base, group: 'blocked', chip: {kind: 'warn', glyph: '!', label: L('막힘 · 노트 충돌', 'Blocked · note conflict')}, codes,
+        what: L('볼트의 노트를 덮어쓰지 않고 멈췄어요.', 'Stopped without overwriting the vault note.'),
+        why: L('노트의 식별·본문 경계·파일 변경을 안전하게 확인할 수 없어요. 자동 재시도하지 않아요.',
+          'The note identity, body boundaries or file changes could not be checked safely. It will not retry automatically.'),
+        how: L('볼트의 중복 노트와 본문 경계를 확인한 뒤 이어서 처리해 주세요.', 'Check duplicate notes and body boundaries in the vault, then resume.'),
+        actions: [act.resume(), act.exclude()]};
     case 'auth':
       return {...base, group: 'blocked', chip: {kind: 'warn', glyph: '!', label: L('막힘 · 로그인', 'Blocked · sign-in')}, codes, what: holding,
         why: names.length

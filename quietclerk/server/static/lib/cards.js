@@ -5,6 +5,7 @@ import {get, put, post, jobPath} from './api.js';
 import {banner, btn, chip, code, problemBlock, announce, apiProblem} from './ui.js';
 import {runAction} from './jobs.js';
 import {dur, shortDate, shortEpoch} from './fmt.js';
+import {openConversion} from './note-conversion.js';
 
 export const statusWord = (status) => ({
   running: L('처리 중', 'processing'), queued: L('대기', 'queued'), retry_wait: L('다시 시도 대기', 'retry pending'),
@@ -49,9 +50,17 @@ export async function recheckLogin(jobs) {
 
 // Builds the click handlers. `after` reloads the screen's data; `notice(node|null)` shows/clears a banner.
 export function makeActions({after, notice}) {
+  const previews = new Set();
   const fail = (job, error) => notice(error.status === 409 ? conflictBanner(job, error) : problemBanner(error));
   return {
     async run(job, id) {
+      if (id === 'convert-note') {
+        if (previews.has(job.job_id)) return;
+        previews.add(job.job_id);
+        try { await openConversion(job, {notice, after}); }
+        finally { previews.delete(job.job_id); }
+        return;
+      }
       notice(null);
       try {
         if (id === 'recheck') {

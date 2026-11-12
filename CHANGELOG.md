@@ -1,5 +1,19 @@
 # Changelog / 변경 기록
 
+## 0.0.10
+
+### 한국어
+
+- 이전 형식 노트의 게시 차단·노트 충돌은 자동 재시도하지 않고 사용자 조치를 기다립니다. 홈·작업·회의록에서 이유와 해결 방법을 안내합니다.
+- 실패한 실행에 완료된 단계도 메타·해시·입력·모델 리비전·설정이 맞으면 재사용합니다. 이행된 작업의 새 산출물까지 재사용하지 못하던 문제와 자동 재시도 때 앞 단계를 다시 계산하던 문제를 고쳤습니다.
+- ‘새 형식으로 바꾸기’에서 미리보고 동의하면 최신 실행 결과로 LLM 호출 없이 교체합니다. 교체 직전 볼트 밖에 다시 백업하고 사용자 속성·기존 본문 전체를 안전하게 보존합니다. 새 파일명·데일리 링크·검색을 갱신하고 중단 시 게시 저널로 복구합니다.
+
+### English
+
+- Old-format note publication blocks and note conflicts now wait for your action without automatic retries. Home, Jobs and Minutes explain why and what to do next.
+- Completed stages from failed runs are reused when verified metadata, hashes, inputs, model revisions and settings match. Fixed migrated jobs rejecting their new artifacts and automatic retries repeating completed work.
+- Preview and consent to ‘Convert to new format’ to publish the latest verified result with no LLM call. An extra outside-vault backup, your properties and the whole old body are preserved safely. Filenames, daily links and search are updated, with journaled crash recovery.
+
 ## 0.0.9
 
 ### 한국어

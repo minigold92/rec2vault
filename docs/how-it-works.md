@@ -77,11 +77,12 @@ A pass is copied to `archive/<job_id>/source.m4a`. The job id is `20261112-14000
 the first 8 characters of the hash. A policy failure (too short, before the cutoff) is kept as a `skipped` job
 that you can promote later; a hostile or broken file is only logged as rejected (see [section 7](#7-odd-and-hostile-input)).
 A failed stage is retried up to 3 times, 5 minutes × attempt number apart, then marked `failed`.
+Note conflicts are different: they wait for your action without using an attempt or retrying on a timer.
 
 ## 3. The ten stages
 
 Each stage writes one JSON file and records the hash of its inputs and its parameters. Run it again and a stage
-whose inputs and parameters did not change is **reused** instead of recomputed. Files below are in
+whose inputs and parameters did not change is **reused** instead of recomputed, including completed stages from failed runs. Migrated jobs can reuse verified v2 outputs, but never unsigned v1 files. Automatic retries reuse completed stages within the same processing request. Files below are in
 [`work/`](examples/demo-meeting-en/work/), named after the stage. (On disk, `detect_language`, `transcribe`,
 `second_pass`, `correct`, `classify` and `summarize` are stored as `language.json`, `asr.json`, `alt.json`,
 `corrected.json`, `classification.json` and `summary.json`.)
@@ -342,6 +343,25 @@ If the same recording is processed again (you changed the LLM, or asked for a fr
   HTML, links, images and block ids in model text are neutralized.
 - A note with a missing or duplicated boundary heading, malformed YAML, or a changed hash at write time is **not
   written**; the job reports a conflict and your file stays as it was.
+
+### Replacing a migrated old-format body
+
+Home, Jobs and Minutes show **Convert to new format** for a migrated note. Open its read-only preview,
+check the current/new paths, new summary and entire old body, then explicitly consent. No model or LLM is
+called: only the latest execution's verified transcript, classification and summary are used. Missing or
+damaged results are refused, and an intervening edit requires a fresh preview.
+
+Immediately before replacement the original file is backed up to `<root>/note-backups/<UTC time>-convert/`,
+outside the vault. User-owned properties stay; the whole old body goes under `## Notes` in a folded callout
+as inert text (links, code, embeds and plugins cannot run). The callout also keeps Base64 of the original
+bytes, including line endings. One note remains at `date_time_title.md`; the publication journal recovers
+interrupted changes, daily links and search are updated, and later re-summaries publish normally.
+
+For authenticated automation, `GET /api/jobs/{id}/convert-note` returns the preview and `preview_token`.
+Send `POST` to the same path with `{"consent":true,"preview_token":"<returned token>"}`, the session cookie,
+same-origin `Origin`, `X-CSRF-Token` and an `Idempotency-Key`. This also works for a migrated job that
+previously ended in `failed(max_attempts)`.
+
 
 ## 6. What leaves your Mac
 

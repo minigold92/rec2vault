@@ -152,7 +152,8 @@ def add_job(con, job_id, sha, source_name, archive_path, duration, status='queue
 
 MODES = ('auto', 'resume', 'from_transcribe', 'resummarize')
 POLICY_REASONS = ('too_short', 'before_cutoff', 'no_speech', 'user_excluded')
-BLOCKED_REASONS = ('auth', 'no_local_provider', 'no_verified_provider', 'disk_low', 'vault_migration')
+BLOCKED_REASONS = ('auth', 'no_local_provider', 'no_verified_provider', 'disk_low', 'vault_migration',
+                   'note_update_blocked', 'note_conflict')
 
 
 def _check_request(row):
@@ -386,6 +387,9 @@ def recover(con, boot, now=None, recover_publication=None):
         if recover_publication is None:
             raise RuntimeError('publication recovery handler required')
         recover_publication(con, publication)
+    for row in con.execute("SELECT active_run_id FROM jobs WHERE status='running' AND "
+                           "(claimed_by IS NULL OR claimed_by<>?)", (boot,)).fetchall():
+        abort_note_conversion(con, row['active_run_id'])
     with transaction(con):
         rows = con.execute("SELECT * FROM jobs WHERE status='running' AND (claimed_by IS NULL OR claimed_by<>?)",
                            (boot,)).fetchall()
@@ -534,6 +538,46 @@ def record_vault_migration(con, jobs, output):
         con.execute("INSERT OR REPLACE INTO meta VALUES(?,'done')", ('vault_migration:' + identity,))
 
 
+def begin_note_conversion(con, job_id, run_id, boot, updated_at):
+    """Reopen the latest execution solely for journaled publication; no new model run."""
+    now = time.time()
+    with transaction(con):
+        row = job(con, job_id)
+        _check_not_deleted(con, row)
+        latest = con.execute('SELECT * FROM runs WHERE job_id=? ORDER BY started_at DESC,rowid DESC LIMIT 1',
+                             (job_id,)).fetchone()
+        if (row['status'] not in ('done', 'failed', 'retry_wait') or row['exclude_requested']
+                or row['updated_at'] != updated_at or latest is None or latest['run_id'] != run_id):
+            raise Conflict('conversion_changed')
+        pending = con.execute("SELECT 1 FROM publications WHERE job_id=? AND state IN ('prepared','renamed')",
+                              (job_id,)).fetchone()
+        if pending:
+            raise Conflict('publication_pending')
+        prior = {'job_status': row['status'], 'stage': row['stage'], 'run_status': latest['status'],
+                 'finished_at': latest['finished_at'], 'error': latest['error']}
+        con.execute('INSERT INTO meta VALUES(?,?)', ('note_conversion:' + run_id, json.dumps(prior)))
+        con.execute("DELETE FROM publications WHERE run_id=? AND state='conflict'", (run_id,))
+        con.execute("UPDATE runs SET status='running' WHERE run_id=?", (run_id,))
+        con.execute("UPDATE jobs SET status='running',active_run_id=?,claimed_by=?,claimed_at=?,stage='note',"
+                    "updated_at=? WHERE job_id=?", (run_id, boot, now, now, job_id))
+    return job(con, job_id)
+
+
+def abort_note_conversion(con, run_id):
+    with transaction(con):
+        key = 'note_conversion:' + str(run_id)
+        saved = con.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
+        if saved is None:
+            return
+        prior = json.loads(saved['value'])
+        con.execute("UPDATE runs SET status=?,finished_at=?,error=? WHERE run_id=?",
+                    (prior['run_status'], prior['finished_at'], prior['error'], run_id))
+        con.execute("UPDATE jobs SET status=?,stage=?,active_run_id=NULL,claimed_by=NULL,claimed_at=NULL,updated_at=? "
+                    "WHERE active_run_id=? AND status='running'",
+                    (prior['job_status'], prior['stage'], time.time(), run_id))
+        con.execute('DELETE FROM meta WHERE key=?', (key,))
+
+
 def prepare_publication(con, job_id, run_id, boot, target, previous_hash, new_hash, temp):
     with transaction(con):
         row = _owned(con, job_id, run_id, boot)
@@ -588,12 +632,17 @@ def _commit_publication(con, publication, pending):
                     (f"{job_id}:{task['task_id']}", job_id, run_id, task['text'], now))
     con.execute("UPDATE runs SET status='done',finished_at=?,error=NULL WHERE run_id=?", (now, run_id))
     con.execute("""UPDATE stage_runs SET status='done',finished_at=?,error=NULL
-                   WHERE run_id=? AND stage='note' AND status='running'""", (now, run_id))
-    con.execute("""UPDATE jobs SET status='done',current_run_id=?,note_path=?,review_reasons=?,
+                   WHERE run_id=? AND stage='note' AND (status='running' OR ?)""",
+                (now, run_id, bool(pending.get('conversion'))))
+    con.execute("""UPDATE jobs SET status='done',legacy=0,current_run_id=?,note_path=?,review_reasons=?,
                    active_run_id=NULL,claimed_by=NULL,claimed_at=NULL,stage=NULL,interrupt_count=0,
                    blocked_reason=NULL,last_error=NULL,updated_at=? WHERE job_id=?""",
                 (run_id, publication['target_path'], json.dumps(pending['review_reasons']), now, job_id))
     con.execute("UPDATE publications SET state='committed',updated_at=? WHERE run_id=?", (now, run_id))
+    if pending.get('conversion'):
+        con.execute('DELETE FROM meta WHERE key IN (?,?)',
+                    ('note_conversion:' + run_id,
+                     'note_migrated:' + vault_identity(pending['output']) + ':' + job_id))
     if row['exclude_requested'] or (row['status'] == 'skipped' and row['skip_reason'] == 'user_excluded'):
         _skip_excluded(con, row, run_id, now)
         # The bytes and ownership are committed, but exclusion preserves the last

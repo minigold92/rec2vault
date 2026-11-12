@@ -116,6 +116,11 @@ class Executor:
         run = self.con.execute('SELECT * FROM runs WHERE run_id=?', (run_id,)).fetchone()
         snapshot = json.loads(run['settings_json'])
         work = Path(snapshot['root']) / 'work' / claimed['job_id'] / 'runs' / run_id
+        retry_count = claimed['attempts'] + claimed['interrupt_count']
+        cache_mode = 'resume' if retry_count else run['mode']
+        retry_runs = {r['run_id'] for r in self.con.execute(
+            'SELECT run_id FROM runs WHERE job_id=? AND run_id<>? ORDER BY started_at DESC,rowid DESC LIMIT ?',
+            (claimed['job_id'], run_id, retry_count))} if retry_count else None
         ctx = Context(self.con, claimed, self.boot, snapshot, run_id, work)
         try:
             work.mkdir(parents=True, exist_ok=True)
@@ -132,8 +137,11 @@ class Executor:
                 inputs = {ctx.paths[name].name if name in ctx.paths else virtual_names[name]: ctx.hashes[name]
                           for name in stage.inputs}
                 path = work / stage.output
-                allowed = stage.cache and artifacts.cache_allowed(stage.name, run['mode'], claimed['legacy'])
+                allowed = stage.cache and artifacts.cache_allowed(stage.name, cache_mode)
                 hit = None
+                # Forced work may be reused only from this request's earlier attempts,
+                # never from before the user's "redo" or "re-summarize" request.
+                candidates = retry_runs if allowed and not artifacts.cache_allowed(stage.name, run['mode']) else None
                 if allowed and run['mode'] == 'resummarize' and stage.name in artifacts.RESUMMARY_KEPT:
                     # Do not compute params here: that may need models or rules the old run never used.
                     hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, artifacts.ANY_PARAMS)
@@ -142,7 +150,7 @@ class Executor:
                 else:
                     params = stage.params(ctx) if callable(stage.params) else stage.params
                     if allowed:
-                        hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, params)
+                        hit = artifacts.find(work.parent, run_id, stage.output, stage.name, inputs, params, run_ids=candidates)
                 ctx.stage_params = params
                 ctx.record(store.start_stage, stage.name, sent_fields=[])
                 try:

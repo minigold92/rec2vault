@@ -172,7 +172,7 @@ def test_migrated_markerless_note_update_is_blocked(vault):
     target = legacy_note(output, ctx.job['job_id'])
     migration.migrate(con, root, output, apply=True, consent=True)
     saved = target.read_bytes()
-    with pytest.raises(executor.StageFailure, match='note_update_blocked'):
+    with pytest.raises(executor.Blocked, match='note_update_blocked'):
         note._publish(ctx, ctx.work / 'note.json.part')
     assert target.read_bytes() == saved and (ctx.work / 'note.md').exists()
     assert store.job(con, ctx.job['job_id'])['current_run_id'] is None

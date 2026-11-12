@@ -40,7 +40,7 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Route
 
 from .. import artifacts, backfill, config, intake, install, providers, selfupdate, store, store_ops
-from ..notes import NoteConflict, migration
+from ..notes import NoteConflict, conversion, migration
 from . import integrations
 from .. import overrides
 from .auth import Auth, COOKIE
@@ -564,6 +564,13 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     job_id = request.path_params['job_id']
                     row = store.job(con, job_id)
                     action = request.path_params.get('action')
+                    if action == 'convert-note':
+                        if method == 'GET':
+                            return JSONResponse(conversion.preview(con, settings, job_id))
+                        if method == 'POST':
+                            if set(data) != {'consent', 'preview_token'}:
+                                raise ValueError('expected consent and preview_token')
+                            return JSONResponse(conversion.apply(con, settings, job_id, **data))
                     if action in ('speakers', 'transcript'):
                         return overrides.api(con, settings, job_id, action, request.path_params.get('item'), method, data)
                     if action is None and method == 'GET':

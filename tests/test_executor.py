@@ -78,7 +78,7 @@ def test_reuse_and_hardlink_sent_fields_empty(engine):
     assert (base / first['current_run_id'] / 'convert.json').stat().st_ino == (base / second['current_run_id'] / 'convert.json').stat().st_ino
 
 
-@pytest.mark.parametrize('change', ['params', 'input_hash', 'missing_meta', 'bad_hash', 'legacy'])
+@pytest.mark.parametrize('change', ['params', 'input_hash', 'missing_meta', 'bad_hash'])
 def test_cache_invalidation(engine, change):
     con, settings, row = engine
     calls, versions = [], {}
@@ -92,12 +92,10 @@ def test_cache_invalidation(engine, change):
         artifacts.metadata(work / 'transcribe.json').unlink()
     elif change == 'bad_hash':
         (work / 'transcribe.json').write_text('corrupted')
-    else:
-        con.execute('UPDATE jobs SET legacy=1')
     calls.clear()
     rerun(con, settings, row, calls, versions)
     assert 'transcribe' in calls
-    if change in ('legacy', 'input_hash'):
+    if change == 'input_hash':
         assert calls == list(NAMES)
     elif change == 'params':
         assert calls == ['transcribe', 'turns', 'correct', 'classify', 'summarize', 'render']

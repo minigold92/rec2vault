@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .. import artifacts, notes, overrides, providers, render, store, syncthing
 from ..notes.migration import preview as legacy_preview
-from ..executor import Blocked, Stage, StageFailure
+from ..executor import Blocked, Stage
 from .text import output_language, processing_language
 
 
@@ -39,7 +39,7 @@ def _quality_metadata(ctx):
     return dropped, speakers
 
 
-def _publish(ctx, out):
+def render_values(ctx):
     turns, corrected = ctx.load('turns'), ctx.load('correct')
     classification, summary = ctx.load('classify'), ctx.load('summarize')
     turns, effective_texts, effective_meta, dropped_overrides = overrides.stage_view(ctx, classification['meta'])
@@ -57,6 +57,11 @@ def _publish(ctx, out):
         ctx.job, recorded, turns, effective_texts, effective_meta, summary['text'], corrected['notes'],
         engines, datetime.now(), processing_language(ctx), detected, output_language(ctx),
         review_reasons=summary.get('review_reasons', []) + dropped_overrides, dropped=dropped, speaker_review=speaker_review)
+    return props, generated, tasks
+
+
+def _publish(ctx, out):
+    props, generated, tasks = render_values(ctx)
     body, _ = notes.new_body(render.header(props, output_language(ctx)), generated, tasks, output_language(ctx))
     draft = ctx.work / 'note.md'
     render.write_atomic(draft, render.frontmatter(props) + body.decode())
@@ -71,7 +76,7 @@ def _publish(ctx, out):
     except notes.NoteConflict as exc:
         result['error'] = str(exc)
         artifacts.write_json(out, result)
-        raise StageFailure(str(exc), artifact=True) from exc
+        raise Blocked(str(exc)) from exc
     ctx.note_path, ctx.review_reasons = target, reasons
     # The macOS watcher can miss files written by a background service; without this the
     # note reached other devices only at Syncthing's next full scan (found 2026-11-10).

@@ -49,7 +49,7 @@ def reusable(path, stage, inputs, params):
         meta = json.loads(metadata(path).read_text(encoding='utf-8'))
         return meta if (meta.get('ok') is True and meta.get('stage') == stage and
                         meta.get('inputs') == inputs and
-                        (params is ANY_PARAMS or meta.get('params') == params) and
+                        (params is ANY_PARAMS or meta.get('params') == json.loads(json.dumps(params))) and
                         sha256(path) == meta.get('output_sha256') and
                         isinstance(meta.get('producer', {}).get('run_id'), str)) else None
     except (OSError, ValueError, TypeError, AttributeError):
@@ -73,8 +73,9 @@ def reuse(source, target):
 RESUMMARY_KEPT = ('convert', 'diarize', 'detect_language', 'transcribe', 'second_pass', 'turns', 'correct')
 
 
-def cache_allowed(stage, mode, legacy=False):
-    if legacy or stage in ('note', 'render'):
+def cache_allowed(stage, mode):
+    # v1 files have no verified metadata; legacy jobs may nevertheless have valid v2 runs.
+    if stage in ('note', 'render'):
         return False
     if mode == 'resummarize' and stage in ('classify', 'summarize'):
         return False
@@ -83,11 +84,11 @@ def cache_allowed(stage, mode, legacy=False):
     return True
 
 
-def find(runs_dir, current_run, name, stage, inputs, params):
+def find(runs_dir, current_run, name, stage, inputs, params, *, run_ids=None):
     """Verified earlier output for these inputs; params=ANY_PARAMS takes the newest one."""
     hits = []
     for directory in sorted(Path(runs_dir).iterdir(), key=lambda p: p.name, reverse=True):
-        if directory.name == current_run or not directory.is_dir():
+        if directory.name == current_run or not directory.is_dir() or (run_ids is not None and directory.name not in run_ids):
             continue
         path = directory / name
         meta = reusable(path, stage, inputs, params)

@@ -77,7 +77,7 @@
 | `skipped` | 정책상 처리 안 함 | `skip_reason`: `too_short`, `before_cutoff`, `no_speech`, `user_excluded` |
 | `queued` | 대기 | `requested_mode` |
 | `running` | 처리 중 | `stage`, `active_run_id`, `exclude_requested` |
-| `retry_wait` | 다음 시도 대기 | `next_attempt_at`, `blocked_reason`(`auth`, `no_local_provider`, `no_verified_provider`, `disk_low`)이 있으면 시간으로 풀리지 않음 |
+| `retry_wait` | 다음 시도 대기 | `next_attempt_at`, `blocked_reason`(`auth`, `no_local_provider`, `no_verified_provider`, `disk_low`, `vault_migration`, `note_update_blocked`, `note_conflict`)이 있으면 시간으로 풀리지 않음 |
 | `failed` | 끝난 실패 | `last_error`: `max_attempts`, `interrupted_repeatedly`, `unsupported_language`, `context_too_long`, `tool_use_detected`, `audio_decode` |
 | `done` | 게시까지 완료 | `current_run_id`, `note_path` |
 
@@ -93,7 +93,7 @@
 | `running` → `done` | 게시 완료 | 7.4절 |
 | `running` → `retry_wait` | 재시도 가능한 실패 | `new=attempts+1`; `new<3`이면 `retry_wait`, `next_attempt_at=now+300×new` |
 | `running` → `failed` | `new>=3`, 또는 재시도 불가 사유 | 한 번에 기록 |
-| `running` → `retry_wait(blocked)` | 인증·제공자·공간 조치만 남음(8.3절) | `attempts` 그대로 |
+| `running` → `retry_wait(blocked)` | 인증·제공자·공간 또는 노트 충돌의 사용자 조치만 남음 | `attempts` 그대로. 노트 충돌은 자동 재시도하지 않음 |
 | `running` → `skipped(no_speech)` | 언어 감지에서 발화 없음 | |
 | `running` → `skipped(user_excluded)` | `exclude_requested=1`을 다음 확인 지점에서 발견 | 확인 지점: 각 단계 시작 전, 외부 호출 전, 게시 전 |
 | `retry_wait` → `queued` | 사용자 처리 요청, 또는 막힌 사유가 해소됨(로그인 확인·설정 변경) | 1.3절 처리 요청 |
@@ -246,6 +246,8 @@ CREATE TABLE tombstones (sha256 TEXT PRIMARY KEY, deleted_at REAL NOT NULL);   -
 
 재사용 조건: 메타 `ok=true`, inputs 해시 일치, params 일치, 데이터 파일의 해시가 `output_sha256`과 일치. 재사용은 `stage_runs.status='reused'`, `reused_from`, `sent_fields=[]`로 기록한다(과거 외부 전송 이력은 원 실행에 남아 있음).
 
+같은 작업의 실패·중단 실행도 재사용 후보이며, `legacy=1`은 메타 없는 v1 결과를 캐시로 승격한다는 뜻이 아니다. 이후 생성된 검증된 v2 산출물은 재사용한다. 메타의 JSON 표현과 같은 형태로 params를 비교한다. 자동 재시도는 같은 처리 요청에서 완료된 단계를 재사용하며, `resummarize`/`from_transcribe`의 강제 재계산 범위는 새 사용자 요청의 첫 실행에만 적용한다.
+
 ### 4.4 재처리 모드
 
 | 모드 | 화면 이름 | 재사용 금지 범위 |
@@ -254,7 +256,7 @@ CREATE TABLE tombstones (sha256 TEXT PRIMARY KEY, deleted_at REAL NOT NULL);   -
 | `from_transcribe` | 처음부터 다시 | detect_language와 그 이후 전부(diarize는 키가 맞으면 재사용) |
 | `resummarize` | 요약만 다시 | classify, summarize |
 
-v1 결과(`legacy=1`)는 어떤 모드에서도 재사용하지 않는다.
+메타 없는 v1 결과는 어떤 모드에서도 재사용하지 않는다. 이행된 작업에서 이후 만들어진 v2 실행 산출물은 4.3절 검증으로 재사용한다.
 
 ### 4.5 의존 관계
 
@@ -396,6 +398,11 @@ Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에
 - Bases: 기존 `회의록.base`는 덮어쓰지 않고 v2 보기 파일을 새로 만든다.
 - v2 Bases는 `formula.when = date(started_at).format("YYYY-MM-DD HH:mm")`을 "녹음 시각"으로 표시하고 최근/검토 대기 뷰 모두 `started_at DESC`로 정렬한다. [Obsidian Bases 함수](https://help.obsidian.md/bases/functions)의 `date()`·날짜 `format()`을 사용한다. 기존 v2 파일은 알려진 옛 템플릿 SHA-256 또는 엄격한 YAML 파싱 결과가 일치할 때만 갱신한다. 들여쓰기·따옴표·리스트 표기만 바뀐 Obsidian 재직렬화는 허용하되 뷰 추가 등 값 변경·파싱 실패·심볼릭 링크는 보존한다.
 - 명령 세부(D 구현, 2026-11-10): `python -m quietclerk.notes migrate --preview`는 아무것도 바꾸지 않고 JSON(전체 대응표·소유권 초기화·충돌)을 출력, `--apply`는 `--consent` 없이는 거부. 백업 `<root>/note-backups/<UTC 시각>/`, 진행 기록 `<root>/note-backups/migration.json`. 사용자 정의 키·프로젝트 값은 보존하고 비차단 충돌로 보고. 알 수 없는 enum 값·식별 불일치·같은 작업의 중복 노트는 그 노트의 이행을 차단하고 보고.
+- **개별 본문 교체**: `GET /api/jobs/{id}/convert-note`는 현재/새 경로, 새 요약, 이전 본문(UTF-8 표시 및 정확한 바이트의 Base64), 최신 실행 ID와 미리보기 토큰을 반환하며 파일·DB를 바꾸지 않는다. `POST`는 `{consent:true, preview_token:"…"}`가 필수다. 기존 9장 세션·Origin·CSRF·Idempotency-Key 규칙을 적용한다. 미리보기 이후 노트·작업·산출물이 바뀌면 409이고 다시 미리보기한다.
+- 최신 실행(실패한 실행 포함)의 `turns`, `correct`, `classify`, `summarize` 산출물만 사용한다. 메타 `ok`, 단계·입력 연결·SHA를 검증하고 없거나 손상되면 이유와 함께 거절한다. LLM·모델은 호출하지 않는다.
+- 교체 직전 노트를 볼트 밖 `<root>/note-backups/<UTC 시각>-convert/`에 fsync 백업하고, 기존 merge 규칙으로 사용자 frontmatter 값을 유지한다. 이전 본문 전체는 `## 메모`/`## Notes` 아래 접힌 note callout에 안전한 텍스트로 보관한다. HTML·Obsidian/플러그인·Markdown 문법은 비활성화하고 원래 바이트는 callout 안 Base64로도 보관한다(줄끝·마지막 개행까지 복원 가능).
+- 새 이름은 `날짜_시각_제목`이며 충돌 시 교체하지 않는다. 7.4 저널로 이름 이동·본문 교체를 복구하고 기존 hook으로 데일리 링크·검색을 갱신한다. 커밋 시 `done`, 대기 사유 제거, 개별 migrated 표식 제거, `legacy=0`으로 이후 보통 재게시를 허용한다.
+- **2026-11-12 운영 발견**: 이행된 노트의 게시 차단이 일반 재시도 실패로 분류되어 같은 모델·텍스트 단계를 반복 실행했다. 노트 충돌은 사용자 조치 대기로 고치고, 실패 실행의 검증된 산출물 재사용 및 동의 기반 개별 교체를 명시한다. 이 문서는 실제 회의 내용·식별자를 포함하지 않는다.
 
 ---
 
@@ -478,6 +485,8 @@ class Provider(Protocol):
 | `GET /api/jobs?status=&limit=&cursor=` | — | 목록 |
 | `GET /api/jobs/{id}` | — | 상세, 실행·단계 이력(보낸 필드 포함) |
 | `POST /api/jobs/{id}/process` | `{mode}` | 202 / 409 `{status}` / 404 |
+| `GET /api/jobs/{id}/convert-note` | — | 무변경 미리보기(현재/새 경로·새 요약·보존할 본문·실행 ID·토큰) / 409 `{error,reason,detail}` |
+| `POST /api/jobs/{id}/convert-note` | `{consent:true, preview_token}` | 200 `{job_id,note_path,backup_path,status:"done"}` / 400(동의 없음) / 409(결과 없음·변경·충돌) |
 | `POST /api/jobs/{id}/exclude`, `/include` | — | 202 / 409 |
 | `PUT /api/jobs/{id}/language` | `{override: ko|en|null}` | 204 / 400 |
 | `POST /api/jobs/{id}/delete-local` | `{scope: "processing_data"}` | 202 / 409(실행 중이면 제외 후 처리) |

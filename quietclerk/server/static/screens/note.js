@@ -8,7 +8,7 @@ import {get, post, jobPath} from '../lib/api.js';
 import {live, subscribe} from '../lib/live.js';
 import {btn, chip, code, empty, banner, problemBlock} from '../lib/ui.js';
 import {describe} from '../lib/jobs.js';
-import {makeActions, languageSelect, problemBanner} from '../lib/cards.js';
+import {makeActions, languageSelect, problemBanner, jobCard} from '../lib/cards.js';
 import {dur, fullDate, stamp} from '../lib/fmt.js';
 import {setTitle, syncEngineControls} from '../lib/shell.js';
 import {nameSpeakers} from '../lib/note-text.js';
@@ -413,6 +413,11 @@ export async function mount({content, jobId}) {
     let bubble = L('이 회의록을 찾지 못했어요.', 'Couldn\'t find these minutes.');
     let text = L('같은 작업 번호의 회의록이 없어요.', 'There are no minutes for this job ID.');
     if (data.unknown) text = L('이 작업 번호를 엔진이 몰라요. 주소를 다시 확인하거나 목록에서 골라 주세요.', 'The engine does not know this job ID. Check the address or pick one from the list.');
+    else if (job && (job.blocked_reason === 'note_update_blocked' || (job.legacy && job.note_path))) {
+      bubble = L('노트 교체 동의를 기다려요.', 'Waiting for note conversion consent.');
+      text = L('위의 새 형식으로 바꾸기에서 새 결과를 미리보고 교체해 주세요. 이전 노트는 동의 전까지 그대로예요.',
+        'Use Convert to new format above to review the new result and replace the note. Until you consent, the old note stays untouched.');
+    }
     else if (job && job.status !== 'done') {
       bubble = L('아직 회의록이 없어요.', 'No minutes yet.');
       text = L('이 녹음은 아직 회의록을 쓰는 중이거나 처리하지 않았어요. 처리 상황은 작업 화면에서 볼 수 있어요.', 'This recording is still being processed or was not processed. See the Jobs screen for its state.');
@@ -460,6 +465,7 @@ export async function mount({content, jobId}) {
     replace(parts.crumb, h('nav', {class: 'crumb', 'aria-label': L('위치', 'Breadcrumb')}, h('a', {href: '/notes'}, L('회의록', 'Notes')),
       h('span', null, '›'), h('span', null, title.length > 24 ? title.slice(0, 24) + '…' : title)));
     replace(parts.notices, state.notice,
+      job && ['blocked', 'failed'].includes(describe(job).group) ? jobCard(job, describe(job), actions) : null,
       state.fresh ? banner('info', 'i', [h('b', null, L('회의록을 새로 만들었어요.', 'The minutes were made again.')), ' ', L('새로 고치면 새 요약이 보여요.', 'Reload to see the new summary.')],
         [btn({small: true, icon: 'refresh', label: L('새로 고침', 'Reload'), on: {click: () => location.reload()}})]) : null,
       data.found && data.note_state === 'missing' ? banner('warn', '!', [h('b', null, L('볼트에서 노트 파일을 찾지 못했어요.', 'Couldn\'t find the note file in your vault.')), ' ',

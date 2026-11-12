@@ -242,24 +242,32 @@ def _rename_daily(pending, target):
         logging.getLogger('rec').warning('daily note rename link failed: %s', exc)
 
 
-def publish(ctx, props, generated, tasks, language):
+def publish(ctx, props, generated, tasks, language, *, conversion=None):
     output = Path(ctx.settings['output']).absolute()
     existing = find_existing(output, ctx.job)
+    if conversion is not None and existing != conversion['source']:
+        raise NoteConflict('conversion_changed')
     current, body, old = None, None, None
     if existing:
         old = existing.read_bytes()
         current, body = parse_note(old)
-        try:
-            record_span(body)
-        except NoteConflict:
-            if store.note_was_migrated(ctx.con, ctx.job['job_id'], output):
-                raise NoteConflict('note_update_blocked')
-            raise
+        if conversion is not None:
+            if existing != conversion['source'] or hashlib.sha256(old).hexdigest() != conversion['previous_hash']:
+                raise NoteConflict('conversion_changed')
+        else:
+            try:
+                record_span(body)
+            except NoteConflict:
+                if store.note_was_migrated(ctx.con, ctx.job['job_id'], output):
+                    raise NoteConflict('note_update_blocked')
+                raise
     records = store.note_field_records(ctx.con, ctx.job['job_id'])
     merged, fields = merge_fields(props, current, records)
     header = render.header(merged, language)
-    if body is None:
+    if body is None or conversion is not None:
         body, new_tasks = new_body(header, generated, tasks, language)
+        if conversion is not None:
+            body += conversion['preserved']
     else:
         # Only tasks the first summary did not already put in the user's list are "new";
         # a plain re-render must not re-propose the same sentences.
@@ -267,7 +275,11 @@ def publish(ctx, props, generated, tasks, language):
         body, new_tasks = merge_body(body, header, generated, [t for t in tasks if _task_key(t) not in known], language), []
     target = existing or output / render.note_name(datetime.strptime(ctx.job['recorded_at'], '%Y%m%d-%H%M%S'),
                                                   merged.get('title'), 'Recording', mtype=merged.get('type'))
-    if existing:
+    if conversion is not None:
+        target = conversion['target']
+        if target != existing and (target.exists() or target.is_symlink()):
+            raise NoteConflict('note_name_conflict')
+    elif existing:
         target = _time_first_path(existing, ctx.job['recorded_at'])
     if not safe_path(output, target) or (not existing and target.exists()):
         raise NoteConflict()
@@ -280,6 +292,8 @@ def publish(ctx, props, generated, tasks, language):
     temp = temp_dir / (ctx.run_id + '.md')
     pending = {'fields': fields, 'tasks': new_tasks, 'review_reasons': merged.get('review_reasons', []),
                'output': str(output), 'previous_b64': base64.b64encode(old).decode('ascii') if old is not None else None}
+    if conversion is not None:
+        pending['conversion'] = True
     if existing and target != existing:
         pending.update(source_path=str(existing), daily_settings=dict(ctx.settings),
                        daily_title=merged.get('title') or target.stem, recorded_at=ctx.job['recorded_at'])
@@ -301,6 +315,9 @@ def publish(ctx, props, generated, tasks, language):
             try:
                 _rename_no_replace(existing, target)
             except FileExistsError:
+                if conversion is not None:
+                    ctx.record(store.publication_conflict)
+                    raise NoteConflict('note_name_conflict')
                 # A file appeared after preparation. The old path is still ours;
                 # retarget the same journal instead of overwriting the collision.
                 target = existing
@@ -384,6 +401,8 @@ def recover_publication(con, publication):
         if 'rewrite' in pending:
             from ..overrides import rollback_rewrite
             rollback_rewrite(con, publication['run_id'], pending['rewrite'])
+        if pending.get('conversion'):
+            store.abort_note_conversion(con, publication['run_id'])
     elif publication['state'] == 'renamed':
         if digest(target) != publication['new_hash']:
             store.recover_publication_conflict(con, publication['run_id'])
