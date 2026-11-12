@@ -177,7 +177,7 @@ def test_formats(fixture, tmp_path):
         header = response.headers['content-disposition']
         assert header.startswith('attachment; filename=') and "filename*=UTF-8''" in header
         assert '\r' not in header and '\n' not in header
-        assert '한글_회의_제목' in unquote(header)
+        assert unquote(header).endswith(f'2026-11-10_1000_한글_회의_제목.{format}')
         if format == 'srt':
             assert '1\n00:00:01,234 --> 00:01:02,567\n' in response.text
         elif format == 'vtt':
@@ -203,6 +203,16 @@ def test_formats(fixture, tmp_path):
         assert '\\n' not in response.headers['content-disposition']
         assert response.headers['content-disposition'].isascii()
     assert not (root / 'output').exists()
+
+
+def test_memo_export_filename_has_time_before_prefix(fixture):
+    root, client, _ = fixture
+    put(root / 'work/ko/runs/run-ko', 'classification.json',
+        {'meta': {'title': '설계 생각', 'type': 'memo'}})
+    response = client.get('/api/jobs/ko/export', params={'format': 'md'})
+    assert response.status_code == 200
+    assert unquote(response.headers['content-disposition']).endswith(
+        '2026-11-10_1000_메모_설계_생각.md')
 
 
 def test_concurrent(fixture):

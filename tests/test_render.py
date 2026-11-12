@@ -15,7 +15,7 @@ def test_IN24_citations_keep_unknown_ids_and_review_reasons():
 
 def test_note_name_strips_unsafe_characters():
     when = datetime(2026, 11, 9, 13, 59, 40)
-    assert render.note_name(when, '모바일 앱 개편: 성과 #공유', '발표회') == '2026-11-09_모바일_앱_개편_성과_공유_1359.md'
+    assert render.note_name(when, '모바일 앱 개편: 성과 #공유', '발표회') == '2026-11-09_1359_모바일_앱_개편_성과_공유.md'
 
 
 def test_find_requires_all_db_identity_fields_and_excludes_links(tmp_path):

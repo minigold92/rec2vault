@@ -3,11 +3,15 @@
 Malformed/duplicate frontmatter or markers and ambiguous/unsafe paths never write.
 The publication journal and durable payload allow recovery without model calls.
 """
+import ctypes
+import errno
+import logging
 import hashlib
 import base64
 import json
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -195,6 +199,49 @@ def _payload_path(publication):
     return Path(publication['temp_path'] + '.json')
 
 
+def _time_first_path(path, recorded_at):
+    recorded = datetime.strptime(recorded_at, '%Y%m%d-%H%M%S')
+    if path.name.startswith(f'{recorded:%Y-%m-%d_%H%M}_'):
+        return path  # Already time-first, even if its title happens to end in HHMM.
+    match = re.fullmatch(re.escape(f'{recorded:%Y-%m-%d}_') + r'(.+)_' +
+                         re.escape(f'{recorded:%H%M}.md'), path.name)
+    # Only a slug the old engine could emit is eligible. Keep its exact spelling.
+    if not match or re.search(r'[\s\\/:*?"<>|#^\[\]%]', match[1]) or len(match[1]) > 165:
+        return path
+    target = path.with_name(f'{recorded:%Y-%m-%d_%H%M}_{match[1]}.md')
+    return path if target.exists() or target.is_symlink() else target
+
+
+def _rename_no_replace(source, target):
+    """Atomic same-filesystem move, including collision checks on macOS/Linux."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == 'darwin':
+        rename = libc.renamex_np
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        result = rename(os.fsencode(source), os.fsencode(target), 0x4)  # RENAME_EXCL
+    elif sys.platform.startswith('linux'):
+        rename = libc.renameat2
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        result = rename(-100, os.fsencode(source), -100, os.fsencode(target), 1)  # AT_FDCWD, NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, 'exclusive rename is unavailable')
+    if result:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(target))
+
+
+def _rename_daily(pending, target):
+    source = pending.get('source_path')
+    if not source or Path(source) == target:
+        return
+    from .. import daily
+    try:
+        daily.link(pending['daily_settings'], target, pending['daily_title'],
+                   pending['recorded_at'], previous_stem=Path(source).stem)
+    except Exception as exc:  # Same best-effort policy as the post-publication hook.
+        logging.getLogger('rec').warning('daily note rename link failed: %s', exc)
+
+
 def publish(ctx, props, generated, tasks, language):
     output = Path(ctx.settings['output']).absolute()
     existing = find_existing(output, ctx.job)
@@ -220,6 +267,8 @@ def publish(ctx, props, generated, tasks, language):
         body, new_tasks = merge_body(body, header, generated, [t for t in tasks if _task_key(t) not in known], language), []
     target = existing or output / render.note_name(datetime.strptime(ctx.job['recorded_at'], '%Y%m%d-%H%M%S'),
                                                   merged.get('title'), 'Recording', mtype=merged.get('type'))
+    if existing:
+        target = _time_first_path(existing, ctx.job['recorded_at'])
     if not safe_path(output, target) or (not existing and target.exists()):
         raise NoteConflict()
     content = dump_frontmatter(merged).encode() + body
@@ -231,6 +280,9 @@ def publish(ctx, props, generated, tasks, language):
     temp = temp_dir / (ctx.run_id + '.md')
     pending = {'fields': fields, 'tasks': new_tasks, 'review_reasons': merged.get('review_reasons', []),
                'output': str(output), 'previous_b64': base64.b64encode(old).decode('ascii') if old is not None else None}
+    if existing and target != existing:
+        pending.update(source_path=str(existing), daily_settings=dict(ctx.settings),
+                       daily_title=merged.get('title') or target.stem, recorded_at=ctx.job['recorded_at'])
     pending.update(getattr(ctx, 'publication_extra', {}))
     if hasattr(ctx, 'override_state'):
         pending['overrides'] = ctx.override_state
@@ -241,12 +293,24 @@ def publish(ctx, props, generated, tasks, language):
         previous_hash = hashlib.sha256(old).hexdigest() if old is not None else None
         ctx.record(store.prepare_publication, target, previous_hash, hashlib.sha256(content).hexdigest(), temp)
         ctx.checkpoint()
-        if not safe_path(output, target) or digest(target) != previous_hash:
+        source = existing or target
+        if not safe_path(output, source) or not safe_path(output, target) or digest(source) != previous_hash:
             ctx.record(store.publication_conflict)
             raise NoteConflict()
+        if existing and target != existing:
+            try:
+                _rename_no_replace(existing, target)
+            except FileExistsError:
+                # A file appeared after preparation. The old path is still ours;
+                # retarget the same journal instead of overwriting the collision.
+                target = existing
+                ctx.record(store.retarget_publication, target)
+            else:
+                sync_directory(target.parent)
         temp.replace(target)
         sync_directory(target.parent)
         ctx.record(store.rename_publication)
+        _rename_daily(pending, target)
         ctx.record(store.commit_publication, pending)
     except Exception:
         publication = ctx.con.execute('SELECT * FROM publications WHERE run_id=?', (ctx.run_id,)).fetchone()
@@ -279,9 +343,35 @@ def recover_publication(con, publication):
     if not safe_path(output, target) or not safe_path(output, temp) or not safe_path(output, pending_path):
         store.recover_publication_conflict(con, publication['run_id'])
         return
+    source = Path(pending.get('source_path', target))
+    if not safe_path(output, source):
+        store.recover_publication_conflict(con, publication['run_id'])
+        return
     if publication['state'] == 'prepared':
-        # A kill between rename and the renamed commit still rolls back prepared.
-        if not temp.exists() and digest(target) == publication['new_hash']:
+        # A kill between either filesystem move and the renamed commit rolls back.
+        if source != target:
+            if source.exists():
+                # No move happened; an independently-created target belongs to its user.
+                if digest(source) != publication['prev_hash']:
+                    store.recover_publication_conflict(con, publication['run_id'])
+                    return
+            else:
+                actual = digest(target)
+                if actual not in (publication['prev_hash'], publication['new_hash']):
+                    store.recover_publication_conflict(con, publication['run_id'])
+                    return
+                if actual != publication['prev_hash']:
+                    temp.unlink(missing_ok=True)
+                    durable_write(temp, base64.b64decode(pending['previous_b64'], validate=True))
+                    temp.replace(target)
+                    sync_directory(target.parent)
+                try:
+                    _rename_no_replace(target, source)
+                except FileExistsError:
+                    store.recover_publication_conflict(con, publication['run_id'])
+                    return
+                sync_directory(source.parent)
+        elif not temp.exists() and digest(target) == publication['new_hash']:
             if pending['previous_b64'] is None:
                 target.unlink()
             else:
@@ -298,6 +388,7 @@ def recover_publication(con, publication):
         if digest(target) != publication['new_hash']:
             store.recover_publication_conflict(con, publication['run_id'])
             return
+        _rename_daily(pending, target)
         store.finish_recovered_publication(con, publication['run_id'], pending)
         pending_path.unlink(missing_ok=True)
         from ..hooks import after_publish

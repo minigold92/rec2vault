@@ -107,6 +107,11 @@ at a time and keeps every stage's output, so an interrupted job resumes where it
 models run in separate processes and are downloaded once. A step-by-step walkthrough with the real
 intermediate files of one fictional meeting is in **[docs/how-it-works.md](docs/how-it-works.md)**.
 
+Notes and exports use `YYYY-MM-DD_HHMM_title` (for example, `2026-11-12_1400_Arbor_Bikes_Review.md`;
+memos: `2026-11-12_0931_메모_Design_idea.md`). Sort filenames descending for newest first.
+On the next publication, old engine names move safely to this format; custom names and collisions stay untouched.
+The Bases views show recording date and time, newest first; unchanged old engine views are upgraded automatically.
+
 ### What leaves your Mac
 
 | Data | Where it goes |

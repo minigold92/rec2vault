@@ -108,20 +108,19 @@ def _read(fd, name):
 def _append(data, heading, stem, line):
     """Insert inside just this H2 section; preserve all existing bytes verbatim."""
     rows = data.splitlines(keepends=True)
+    identity = re.compile(rb'\[\[' + re.escape(stem.encode('utf-8')) + rb'(?:\||\]\])')
+    if any(identity.search(row) for row in rows):
+        return data  # A renamed link may live under a user-renamed section heading.
     start = next((i for i, row in enumerate(rows) if row.rstrip(b'\r\n') == heading), None)
     newline = b'\r\n' if b'\r\n' in data else b'\n'
     if start is None:
         prefix = b'' if not data or data.endswith(b'\n') else newline
         return data + prefix + heading + newline + line + newline
-    end = next((i for i in range(start + 1, len(rows)) if re.match(rb'^#{1,2} ', rows[i])), len(rows))
-    identity = re.compile(rb'\[\[' + re.escape(stem.encode('utf-8')) + rb'(?:\||\]\])')
-    if any(identity.search(row) for row in rows[start + 1:end]):
-        return data
     prefix = b'' if rows[start].endswith(b'\n') else newline
     return b''.join(rows[:start + 1]) + prefix + line + newline + b''.join(rows[start + 1:])
 
 
-def link(settings, note_path, title, recorded):
+def link(settings, note_path, title, recorded, *, previous_stem=None):
     """Add one recording-date link; return the daily path, or None when disabled.
 
     `recorded` accepts a datetime or the engine's YYYYMMDD-HHMMSS timestamp.
@@ -173,7 +172,16 @@ def link(settings, note_path, title, recorded):
                 raise DailyConflict('invalid daily-note lock')
             fcntl.flock(lock, fcntl.LOCK_EX)
             original, identity = _read(fd, target.name)
-            updated = _append(original or b'', heading, stem, entry)
+            updated = original or b''
+            if previous_stem is not None:
+                if not isinstance(previous_stem, str) or any(c in previous_stem for c in '[]|\\\r\n'):
+                    raise DailyConflict('invalid previous note name')
+                # Only the engine's job/date line changes; replay is idempotent.
+                pattern = (rb'(?m)^- ' + recorded.strftime('%H:%M').encode() + rb' \[\[' +
+                           re.escape(previous_stem.encode('utf-8')) + rb'(?=\|[^\r\n]*\]\](?:\r?$))')
+                updated = re.sub(pattern, lambda _: f'- {recorded:%H:%M} [[{stem}'.encode(), updated)
+            if updated == (original or b''):
+                updated = _append(updated, heading, stem, entry)
             if updated == original:
                 return target
             temporary = f'.quietclerk-daily-{uuid.uuid4().hex}.part'

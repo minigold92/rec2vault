@@ -549,6 +549,16 @@ def publication_conflict(con, job_id, run_id, boot):
         con.execute("UPDATE publications SET state='conflict',updated_at=? WHERE run_id=?", (time.time(), run_id))
 
 
+
+def retarget_publication(con, job_id, run_id, boot, target):
+    """A no-replace collision keeps the original note and the same prepared journal."""
+    with transaction(con):
+        _owned(con, job_id, run_id, boot)
+        if con.execute("""UPDATE publications SET target_path=?,updated_at=?
+                          WHERE run_id=? AND state='prepared'""",
+                       (str(target), time.time(), run_id)).rowcount != 1:
+            raise Conflict('publication_not_prepared')
+
 def rename_publication(con, job_id, run_id, boot):
     with transaction(con):
         _owned(con, job_id, run_id, boot)
@@ -561,6 +571,10 @@ def _commit_publication(con, publication, pending):
     now = time.time()
     job_id, run_id = publication['job_id'], publication['run_id']
     row = job(con, job_id)
+    if pending.get('source_path'):
+        con.execute("""UPDATE publications SET target_path=? WHERE job_id=?
+                       AND target_path=? AND state='committed'""",
+                    (publication['target_path'], job_id, pending['source_path']))
     if 'overrides' in pending:
         from .overrides import commit_overrides
         if commit_overrides(con, publication, pending):

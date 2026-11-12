@@ -227,7 +227,8 @@ all is rejected. Only agreed outcomes count as decisions and only assigned or vo
 ### note: write the Markdown file
 
 **In** `summarize.json` and the other stage outputs → **Out** a note in your vault,
-[`notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md`](examples/demo-meeting-en/notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md),
+`notes/2026-11-12_1400_Arbor_Bikes_App_First-Screen_Review.md`
+([demo snapshot, saved under the former filename](examples/demo-meeting-en/notes/2026-11-12_Arbor_Bikes_App_First-Screen_Review_1400.md)),
 plus [`work/note.json`](examples/demo-meeting-en/work/note.json) (path and review reasons). This stage is never
 cached: it merges into whatever is already in the vault. See [section 5](#5-the-note).
 
@@ -313,8 +314,17 @@ The body (the headings are plain Markdown; there are no hidden comment markers):
   reasons: uncertain type or language, a failed correction chunk, an unknown citation.
 - **Provenance**: models and revisions (`pipeline_asr`), the LLM CLI (`pipeline_llm`), and who received text
   (`external_text_to`), plus the original file name and SHA-256, so a note can always be traced to its recording.
-- `notes/회의록-v2.base` is an Obsidian Bases view (recent notes, notes waiting for review) written next to the notes
-  if absent. An existing file is never overwritten.
+- Filenames use recording date and time first: `YYYY-MM-DD_HHMM_title.md`; memos use
+  `YYYY-MM-DD_HHMM_메모_title.md`. Exports use the same stem. On the next publication (including
+  Resume for a completed job), only old engine filenames matching that job's recording date/time move
+  to the new format, retaining the existing slug. Custom names and occupied destinations are preserved.
+  The existing publication journal rolls prepared moves back and completes renamed moves after a crash.
+  Enabled daily-note links keep their alias and other bytes, changing only the old note stem.
+- `notes/회의록-v2.base` is an Obsidian Bases view. Both recent and review-waiting views show
+  `date(started_at).format("YYYY-MM-DD HH:mm")` as recording time and sort by `started_at` descending
+  ([Bases functions](https://help.obsidian.md/bases/functions)). Missing views are created; known old
+  templates are upgraded only when bytes or strictly parsed YAML values match. YAML formatting-only
+  changes from Obsidian are accepted; added views or other content edits are left alone.
 
 ### What stays yours when the note is regenerated
 

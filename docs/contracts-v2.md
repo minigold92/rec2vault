@@ -357,6 +357,8 @@ Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에
 - `note_fields`에 필드별 `owner`와 `last_generated`를 둔다. 게시할 때 노트의 현재 값이 `last_generated`와 다르면 그 필드를 `user`로 바꾸고, 사용자가 화면에서 "자동 관리로 돌리기"를 누르기 전에는 되돌리지 않는다.
 - 소유권 기록이 없는 노트(이행 직후 등)는 `title`, `division`을 사용자 소유로 본다. 사용자 필드의 빈 목록도 사용자 값이다.
 - **노트 찾기**: frontmatter를 파싱해 `qc_schema=2`, `job_id`, `source_sha256`이 DB 작업과 모두 맞는 파일. `note_path`에 없으면 출력 폴더 아래에서 다시 찾고, 맞는 파일이 둘 이상이면 자동 선택하지 않고 `note_conflict`. 심볼릭 링크, 출력 폴더 밖 경로, 위 조건이 안 맞는 파일은 덮어쓰지 않는다.
+- 파일 이름은 `YYYY-MM-DD_HHMM_{메모_}{slug}.md`(녹음 시각, 메모 유형만 `메모_`)이며 export도 같다. 다음 게시 때 job의 `recorded_at` 날짜·분과 일치하는 옛 `YYYY-MM-DD_{메모_}{slug}_HHMM.md`만 시간 우선으로 바꾼다. 기존 slug는 그대로 두며 사용자 지정 이름·새 이름 충돌은 원이름으로 게시한다.
+- 이미 `YYYY-MM-DD_HHMM_`로 시작하면 새 형식으로 보아 그대로 둔다. 구형 slug의 시작도 같은 시각이면 두 형식이 모호하므로 자동 변경보다 이름 보존을 우선한다.
 
 ### 7.3 본문
 
@@ -378,12 +380,12 @@ Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에
 ### 7.4 게시 (원자성과 복구)
 
 1. 생성 결과를 임시 파일(출력 폴더 안 `.quietclerk-tmp/`)에 완성.
-2. `publications`에 `prepared`(대상 경로, 지금 파일 해시, 새 파일 해시, 임시 경로) 커밋.
-3. 대상 파일의 현재 해시가 `prev_hash`와 다르면 `conflict`로 끝(덮어쓰지 않음).
-4. 임시 파일을 대상으로 rename → `renamed` 커밋.
-5. 한 트랜잭션: `note_fields`·`note_tasks` 반영, `jobs.current_run_id`, `note_path`, `status='done'`, `publications.state='committed'`.
+2. `publications`에 `prepared`(대상 경로, 지금 파일 해시, 새 파일 해시, 임시 경로) 커밋. 이름 변경 시 durable payload에 원경로도 기록한다.
+3. 대상/원파일의 현재 해시가 `prev_hash`와 다르면 `conflict`로 끝(덮어쓰지 않음).
+4. 이름 변경은 원파일을 새 경로로 원자적 no-replace rename(충돌 시 원경로로 게시). 임시 파일을 대상으로 rename → `renamed` 커밋.
+5. 한 트랜잭션: `note_fields`·`note_tasks` 반영, `jobs.current_run_id`, `note_path`, `status='done'`, 해당 작업의 기존 `publications.target_path`, `publications.state='committed'`.
 
-시작 복구: `prepared`면 임시 파일을 지우고 게시 전 상태로(이전 노트 보존). `renamed`면 대상 파일 해시가 `new_hash`인지 확인하고 5단계를 마저 한다. LLM을 다시 부르지 않는다.
+시작 복구: `prepared`면 임시 파일을 지우고 게시 전 상태로(이름을 옮겼다면 원경로·이전 바이트 복원). `renamed`면 대상 파일 해시가 `new_hash`인지 확인하고 5단계를 마저 한다. 노트는 하나만 남기며 LLM을 다시 부르지 않는다. 이름 변경의 데일리 링크 수정은 durable payload로 재시도하며, 잠금 아래 `- HH:MM [[옛stem|별칭]]`의 stem만 고친다(별칭·나머지 바이트 보존, 설정 꺼짐이면 쓰지 않음). 데일리 쓰기 실패는 기존 게시 후 hook처럼 기록하고 노트 게시를 되돌리지 않는다.
 
 ### 7.5 기존 노트 이행 (사용자 동의 필요)
 
@@ -392,6 +394,7 @@ Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에
 - 이행한 노트는 엔진 구간 제목(`## 회의 내용`)이 없으므로 다시 렌더하지 않는다. 그런 작업에서 "요약만 다시"를 하면 결과를 실행 산출물로 두고 `note_update_blocked`를 표시하며, 사용자가 미리보기를 보고 "새 형식으로 바꾸기"를 눌렀을 때만 새 형식 본문으로 게시한다.
 - **볼트 이행 전에는 엔진이 볼트에 쓰지 않는다**(새 녹음 노트 포함). 이행을 미루면 새 노트는 실행 산출물로만 남고 화면에 "노트 이행 후 볼트에 넣어요"가 뜬다. 첫 업그레이드 화면에서 이행을 바로 제안한다.
 - Bases: 기존 `회의록.base`는 덮어쓰지 않고 v2 보기 파일을 새로 만든다.
+- v2 Bases는 `formula.when = date(started_at).format("YYYY-MM-DD HH:mm")`을 "녹음 시각"으로 표시하고 최근/검토 대기 뷰 모두 `started_at DESC`로 정렬한다. [Obsidian Bases 함수](https://help.obsidian.md/bases/functions)의 `date()`·날짜 `format()`을 사용한다. 기존 v2 파일은 알려진 옛 템플릿 SHA-256 또는 엄격한 YAML 파싱 결과가 일치할 때만 갱신한다. 들여쓰기·따옴표·리스트 표기만 바뀐 Obsidian 재직렬화는 허용하되 뷰 추가 등 값 변경·파싱 실패·심볼릭 링크는 보존한다.
 - 명령 세부(D 구현, 2026-11-10): `python -m quietclerk.notes migrate --preview`는 아무것도 바꾸지 않고 JSON(전체 대응표·소유권 초기화·충돌)을 출력, `--apply`는 `--consent` 없이는 거부. 백업 `<root>/note-backups/<UTC 시각>/`, 진행 기록 `<root>/note-backups/migration.json`. 사용자 정의 키·프로젝트 값은 보존하고 비차단 충돌로 보고. 알 수 없는 enum 값·식별 불일치·같은 작업의 중복 노트는 그 노트의 이행을 차단하고 보고.
 
 ---
@@ -720,3 +723,10 @@ CLI 기본 설치·업데이트는 기존 PATH·모델 검사 동작을 그대�
 - 모든 명령 `--json`은 한 줄 JSON, 사람용 출력은 기본. 실패는 종료 코드 1과 stderr 한 줄. 쓰기 명령은 없다.
 - 설치·업데이트가 `~/.local/bin/quietclerk`를 현재 venv의 실행 파일로 가리키게 한다(있던 다른 파일이면 건드리지 않고 알림).
 - README에 "AI 에이전트에서 쓰기" 절: Claude Code·Codex에 줄 지침 예시, 다른 Mac에서는 `ssh <mac> quietclerk ...`.
+
+### 10.10 시간 우선 노트 이름과 Bases 녹음 시각 (2026-11-12)
+
+- 같은 날짜 안에서 제목순으로 섞이던 파일 이름을 `날짜_시각_제목`으로 바꾼다(7.2절). 이미 끝난 작업도 `POST /api/jobs/{id}/process {"mode":"resume"}`으로 캐시된 산출물을 재사용하고 비캐시 note 단계만 다시 게시하여 옛 이름을 바꿀 수 있다. 운영 일괄 변경 전 백업은 운영자가 별도로 한다.
+- 파일 이동은 기존 게시 저널의 durable payload를 확장한다(DB 스키마 변경 없음). `prepared` 복구는 원이름으로 롤백, `renamed` 복구는 새 경로로 완료하며 사용자 영역은 바이트 보존한다. 충돌 파일은 덮어쓰거나 삭제하지 않는다.
+- Base 의미 비교를 채택한다: Obsidian이 엔진 YAML을 재직렬화한 파일도 갱신해야 하므로, 알려진 옛 템플릿과 파싱 결과가 같으면 형식만 버리고 갱신한다. 주석·공백·따옴표 차이는 유지되지 않는다. 의미가 다른 사용자 파일은 건드리지 않는다.
+

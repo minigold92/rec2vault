@@ -97,7 +97,7 @@ def download(con, job_id, root, params, *, include_transcript=True):
     # XML and headers cannot carry controls, including controls in old artifacts.
     text = ''.join(c for c in text if c in '\n\t' or not unicodedata.category(c).startswith('C'))
     body = _docx(text) if format == 'docx' else text.encode('utf-8')
-    filename = render.note_name(datetime.strptime(data['date'], '%Y%m%d-%H%M%S'), data['title'], 'Recording')[:-3] + '.' + format
+    filename = render.note_name(datetime.strptime(data['date'], '%Y%m%d-%H%M%S'), data['title'], 'Recording', mtype=data['properties'].get('type'))[:-3] + '.' + format
     filename = ''.join(c for c in filename if not unicodedata.category(c).startswith('C'))
     disposition = f'attachment; filename="meeting.{format}"; filename*=UTF-8\'\'{quote(filename, safe="")}'
     return Response(body, media_type=FORMATS[format], headers={'Content-Disposition': disposition})

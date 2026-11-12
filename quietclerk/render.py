@@ -1,4 +1,5 @@
 """Pure v2 note rendering; publication and user-owned merges live in notes."""
+import hashlib
 import html
 import json
 import re
@@ -10,7 +11,8 @@ from .postprocess import CITATION, TYPE_LABELS, line_id
 from .transcript import stamp
 
 BASE_FILE = '회의록-v2.base'
-BASE_TEMPLATE = '''filters:
+# Historical engine templates remain available for exact/semantic upgrade checks.
+LEGACY_BASE_TEMPLATES = ('''filters:
   and:
     - file.ext == "md"
     - qc_schema == 2
@@ -50,6 +52,52 @@ views:
         - status == "draft"
         - needs_review == true
     order: [title, date, needs_review, formula.status_ko]
+''',)
+LEGACY_BASE_HASHES = frozenset(hashlib.sha256(text.encode()).hexdigest() for text in LEGACY_BASE_TEMPLATES)
+BASE_TEMPLATE = '''filters:
+  and:
+    - file.ext == "md"
+    - qc_schema == 2
+    - file.hasTag("meeting-notes")
+formulas:
+  when: 'date(started_at).format("YYYY-MM-DD HH:mm")'
+  type_ko: 'if(type == "meeting", "회의", if(type == "status_update", "현황공유", if(type == "presentation", "발표회", if(type == "lecture", "강의", if(type == "one_on_one", "1:1", if(type == "brainstorm", "브레인스토밍", "기타"))))))'
+  division_ko: 'if(division == "work", "업무", "개인")'
+  status_ko: 'if(status == "reviewed", "검토함", "AI초안")'
+properties:
+  title:
+    displayName: 제목
+  formula.when:
+    displayName: 녹음 시각
+  project:
+    displayName: 프로젝트
+  duration_min:
+    displayName: 길이(분)
+  needs_review:
+    displayName: 검토필요
+  formula.type_ko:
+    displayName: 유형
+  formula.division_ko:
+    displayName: 구분
+  formula.status_ko:
+    displayName: 상태
+views:
+  - type: table
+    name: 최근 회의록
+    order: [title, formula.when, formula.type_ko, formula.division_ko, project, duration_min, formula.status_ko]
+    sort:
+      - property: started_at
+        direction: DESC
+  - type: table
+    name: 검토 대기
+    filters:
+      or:
+        - status == "draft"
+        - needs_review == true
+    order: [title, formula.when, needs_review, formula.status_ko]
+    sort:
+      - property: started_at
+        direction: DESC
 '''
 # The engine owns the body from the "meeting record" heading up to the "notes" heading.
 # Plain headings instead of comment markers: Obsidian shows comments in Live Preview.
@@ -62,7 +110,7 @@ def note_name(recorded, title, fallback, mtype=None):
     slug = re.sub(r'\s+', '_', (title or fallback).strip())
     slug = re.sub(r'[\\/:*?"<>|#^\[\]%]', '', slug)[:160]
     prefix = '메모_' if mtype == 'memo' else ''
-    return f'{recorded:%Y-%m-%d}_{prefix}{slug}_{recorded:%H%M}.md'
+    return f'{recorded:%Y-%m-%d_%H%M}_{prefix}{slug}.md'
 
 
 def frontmatter(props):
@@ -330,9 +378,27 @@ def write_atomic(path, text):
 
 
 def ensure_base(out_dir):
-    from .notes import NoteConflict, safe_path
+    import yaml
+    from .notes import Loader, NoteConflict, safe_path
     if not safe_path(out_dir, out_dir):
         raise NoteConflict()
     base = out_dir / BASE_FILE
+    if not safe_path(out_dir, base):
+        return  # User-owned links are never followed or replaced.
     if not base.exists():
+        write_atomic(base, BASE_TEMPLATE)
+        return
+    original = base.read_bytes()
+    if original == BASE_TEMPLATE.encode():
+        return
+    known = hashlib.sha256(original).hexdigest() in LEGACY_BASE_HASHES
+    if not known:
+        try:
+            # The strict note loader rejects aliases and duplicate keys; merely
+            # reserializing YAML in Obsidian must not make an engine view permanent.
+            parsed = yaml.load(original.decode('utf-8'), Loader=Loader)
+            known = any(parsed == yaml.load(text, Loader=Loader) for text in LEGACY_BASE_TEMPLATES)
+        except (ValueError, yaml.YAMLError):
+            return
+    if known and safe_path(out_dir, base) and base.read_bytes() == original:
         write_atomic(base, BASE_TEMPLATE)

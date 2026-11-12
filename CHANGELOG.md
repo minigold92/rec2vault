@@ -1,5 +1,19 @@
 # Changelog / 변경 기록
 
+## 0.0.9
+
+### 한국어
+
+- 회의록·내보내기 파일 이름을 `날짜_시각_제목`으로 바꿔 같은 날 녹음도 파일명 내림차순으로 찾을 수 있습니다. 메모는 시각 뒤에 `메모_`가 붙습니다.
+- 기존 엔진 형식 이름은 다음 게시(완료한 작업의 이어 하기 포함) 때 제목 부분을 보존하며 바뀝니다. 직접 정한 이름과 충돌 파일은 건드리지 않고, 게시 저널로 중단 후 복구하며 켜 둔 데일리 노트 링크도 갱신합니다.
+- Obsidian Bases의 최근/검토 대기 보기 모두 녹음 시각을 분까지 표시하고 최신순으로 정렬합니다. 알려진 옛 엔진 보기와 내용이 같으면 YAML 표기만 달라도 갱신하며, 내용을 고친 보기는 보존합니다.
+
+### English
+
+- Meeting-note and export filenames now use `date_time_title`, so filename sorting also orders recordings within a day. Memos keep `메모_` after the time.
+- Old engine filenames change on the next publication, including Resume for completed jobs, keeping the existing title slug. Custom names and collisions are left alone; the publication journal recovers interrupted moves and enabled daily-note links are updated.
+- Both Obsidian Bases views show recording time to the minute and sort newest first. Known old engine views are upgraded even after YAML reserialization; views with changed content are preserved.
+
 ## 0.0.8
 
 ### 한국어
