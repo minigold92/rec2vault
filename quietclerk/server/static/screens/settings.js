@@ -1,8 +1,8 @@
 // Settings: contract §3.3 keys with their effective value, file value and lock (design: docs/ui/settings.html).
 // Data: GET/PUT /api/settings (flat dotted keys; one invalid key rejects the whole save), GET /api/providers,
 // POST /api/logout, GET /api/notes/migration (how many old-format notes are left), and the update state
-// (lib/update.js: Check now, installed version). Not in the API yet: the list of deleted recordings and
-// restoring them, so that is shown as unavailable with the endpoint named.
+// (lib/update.js: Check now, installed version). The list of deleted recordings and restoring them are not served, so the
+// screen has no card for them.
 // The word list (contract §10.7) edits vocabulary.terms, vocabulary.replace and the `vocabulary` entry of
 // providers.consent through the same drafts, save bar and 400 display as every other key.
 // The summary layout (headings per meeting type and a preference), the short-recording memo and the daily-note path (contract §10.8 E-G)
@@ -209,19 +209,19 @@ export async function mount({content}) {
         : L('실행 중에는 바꿀 수 없어요.', 'Can\'t be changed while running.')));
   }
 
-  const tags = (key, apply, extra) => h('div', {class: 'tags'},
-    apply === 'now' ? chip('ok', '✓', APPLY.now()) : apply === 'restart' ? chip('warn', '↻', APPLY.restart()) : chip('line', '↻', APPLY[apply]()),
-    code(extra || key));
+  // A setting's key is for people editing settings.toml: it is the label's tooltip (field), not part of the page.
+  const tags = (apply) => h('div', {class: 'tags'},
+    apply === 'now' ? chip('ok', '✓', APPLY.now()) : apply === 'restart' ? chip('warn', '↻', APPLY.restart()) : chip('line', '↻', APPLY[apply]()));
 
   const lockChip = () => chip('lock', '⊘', L('잠김', 'Locked'));
 
-  function field({id, key, label, help, control, apply, locked, extra}) {
+  function field({id, key, label, help, control, apply, locked, extra, wide}) {
     const error = state.errors[key];
-    return h('div', {class: 'field' + (locked ? ' locked' : ''), 'data-key': key},
-      h('div', {class: 'lab'}, h('label', {for: id}, label), help ? h('span', {class: 'help'}, help) : null),
+    return h('div', {class: 'field' + (locked ? ' locked' : '') + (wide ? ' wide' : ''), 'data-key': key},
+      h('div', {class: 'lab'}, h('label', {for: id, title: extra || key}, label), help ? h('span', {class: 'help'}, help) : null),
       h('div', {class: 'ctl'}, control, locked ? lockNote(key) : null,
         error ? h('p', {class: 'err-text', id: `${id}-err`}, error, ' ', code(`400 ${key}`)) : null,
-        apply ? tags(key, apply, extra) : (extra ? h('div', {class: 'tags'}, code(extra)) : null)));
+        apply ? tags(apply) : null));
   }
 
   function textField(key, id, label, help, apply, cls) {
@@ -289,18 +289,19 @@ export async function mount({content}) {
     const items = rows.map((name) => {
       const index = order.indexOf(name);
       const on = index >= 0;
-      return h('li', {class: 'row provider-row' + (on ? '' : ' off')},
-        on ? code(String(index + 1)) : null, h('b', null, providerLabel(name)), status(name),
-        on ? h('span', {class: 'small muted'}, L(`보낼 것: ${(consent[name] || []).map((f) => (FIELD_NAMES[f] ? FIELD_NAMES[f][0] : f)).join('·') || '없음'}`,
-          `Sends: ${(consent[name] || []).map((f) => (FIELD_NAMES[f] ? FIELD_NAMES[f][1] : f)).join(', ') || 'nothing'}`))
-          : h('span', {class: 'small muted'}, L('꺼짐 · 순서에 없음', 'Off · not in order')),
-        h('span', {class: 'spacer'}),
-        btn({small: true, kind: 'ghost', href: '/setup/4', label: on ? L('동의 바꾸기', 'Edit consent') : L('켜기', 'Turn on')}),
-        on ? [btn({small: true, engine: true, disabled: index === 0, icon: 'up', aria: L(`${providerLabel(name)} 위로`, `Move ${providerLabel(name)} up`), on: {click: () => move(name, -1)}}),
-          btn({small: true, engine: true, disabled: index === order.length - 1, icon: 'down', aria: L(`${providerLabel(name)} 아래로`, `Move ${providerLabel(name)} down`), on: {click: () => move(name, 1)}})] : null);
+      const sends = (field) => (FIELD_NAMES[field] ? FIELD_NAMES[field] : [field, field]);
+      // Every engine has the same grid: name and state chips / one sentence, with the action link at the right end of it.
+      return h('li', {class: 'provider-row' + (on ? '' : ' off')},
+        h('div', {class: 'pr-name'}, on ? code(String(index + 1)) : null, h('b', null, providerLabel(name)), status(name)),
+        on ? h('div', {class: 'pr-move'},
+          btn({small: true, engine: true, disabled: index === 0, icon: 'up', aria: L(`${providerLabel(name)} 위로`, `Move ${providerLabel(name)} up`), on: {click: () => move(name, -1)}}),
+          btn({small: true, engine: true, disabled: index === order.length - 1, icon: 'down', aria: L(`${providerLabel(name)} 아래로`, `Move ${providerLabel(name)} down`), on: {click: () => move(name, 1)}})) : null,
+        h('p', {class: 'pr-state small muted'}, on ? L(`보낼 것: ${(consent[name] || []).map((f) => sends(f)[0]).join('·') || '없음'}`,
+          `Sends: ${(consent[name] || []).map((f) => sends(f)[1]).join(', ') || 'nothing'}`) : L('꺼짐 · 순서에 없음', 'Off · not in order')),
+        h('div', {class: 'pr-link'}, btn({small: true, kind: 'ghost', href: '/setup/4', label: on ? L('동의 바꾸기', 'Edit consent') : L('켜기', 'Turn on')})));
     });
-    items.push(h('li', {class: 'row provider-row off'}, h('b', null, 'Gemini CLI'), chip('err', '⊘', L('쓸 수 없음', 'Unavailable')),
-      h('span', {class: 'small muted'}, L('개인 구독 로그인을 서버가 거절해요', 'Server rejects personal subscription sign-in'))));
+    items.push(h('li', {class: 'provider-row off'}, h('div', {class: 'pr-name'}, h('b', null, 'Gemini CLI'), chip('err', '⊘', L('쓸 수 없음', 'Unavailable'))),
+      h('p', {class: 'pr-state small muted'}, L('개인 구독 로그인을 서버가 거절해요', 'Server rejects personal subscription sign-in'))));
     return h('ol', {class: 'stack tight', id: 'f-order'}, items);
   }
 
@@ -513,7 +514,7 @@ export async function mount({content}) {
         return h('label', {class: 'check small'},
           h('input', {type: 'checkbox', checked: list.includes('vocabulary'), disabled: !can, 'data-engine': can ? '' : null,
             on: {change: (event) => { setSendVocabulary(name, event.target.checked); status.textContent = said(true, event.target.checked); }}}),
-          h('span', null, h('b', {class: 'ink'}, providerLabel(name)), ' ', code('vocabulary'), h('br'), status));
+          h('span', {title: 'vocabulary'}, h('b', {class: 'ink'}, providerLabel(name)), h('br'), status));
       })) : h('p', {class: 'small muted'}, L('켜 둔 요약 엔진이 없어요. 엔진을 켜면 여기서 단어장을 보낼지 고를 수 있어요. ', 'No summary engine is on. Once one is, you can choose here whether it gets the word list. '),
         h('a', {href: '/setup/4'}, L('요약 엔진 켜기', 'Turn on an engine'))),
       h('p', {class: 'small muted'}, L('받아쓰기는 이 Mac 안에서 하니 단어장을 늘 써요. 교정·분류·요약 엔진에는 동의한 곳에만 보내고, 동의하지 않으면 단어장 없이 교정해요. 틀린 표기 → 바른 표기는 어디에도 보내지 않아요.',
@@ -644,7 +645,7 @@ export async function mount({content}) {
     return [
       section('s-out', L('회의록', 'Notes'),
         field({id: 'f-out', key: 'output', label: L('회의록 폴더', 'Notes folder'), help: L('볼트 안의 폴더', 'A folder in your vault'), apply: 'rec', locked: isLocked('output'),
-          control: h('div', {class: 'row'}, h('input', {class: 'input grow', id: 'f-out', value: String(value('output') ?? ''), disabled: isLocked('output'), 'data-engine': isLocked('output') ? null : '',
+          control: h('div', {class: 'row'}, h('input', {class: 'input fill', id: 'f-out', value: String(value('output') ?? ''), disabled: isLocked('output'), 'data-engine': isLocked('output') ? null : '',
             'aria-invalid': state.errors.output ? 'true' : null, on: {input: (event) => setDraft('output', event.target.value)}}),
           h('span', {class: 'row gap6'}, btn({small: true, disabled: true, label: L('바꾸기', 'Change')}),
             h('span', {class: 'why'}, L('폴더 선택 창은 Mac 앱에서만 열려요', 'The folder picker opens only in the Mac app'))))}),
@@ -685,8 +686,8 @@ export async function mount({content}) {
         switchField('providers.local_only', 'f-lo', L('로컬 전용 모드', 'Local-only mode'),
           L('켜면 이 Mac 밖으로 글자를 보내지 않고, 외부로 넘어가는 대체도 막아요. 로컬로 확인된 엔진이 없으면 요약 단계에서 기다리게 돼요.', 'When on, no text leaves this Mac and external fallback is blocked. If no engine is verified local, jobs wait at summarising.'), 'rec'),
         field({id: 'f-order', key: 'providers.order', label: L('순서와 보낼 것', 'Order and data sent'), help: L('위에서부터 쓰고, 실패하면 다음으로 넘어가요. 동의한 엔진만 써요.', 'Used top to bottom; on failure the next is tried. Only engines you agreed to are used.'),
-          apply: 'rec', extra: 'providers.order · providers.consent', control: providersHost}),
-        textField('providers.ollama.model', 'f-om', L('Ollama 모델', 'Ollama model'), L('설치된 모델 이름을 적어요. 모델 목록을 받는 API는 아직 없어요.', 'Type an installed model name. There is no API yet that lists models.'), 'rec', 'mid'),
+          apply: 'rec', extra: 'providers.order · providers.consent', wide: true, control: providersHost}),
+        textField('providers.ollama.model', 'f-om', L('Ollama 모델', 'Ollama model'), L('설치된 모델 이름을 적어요.', 'Type an installed model name.'), 'rec', 'mid'),
         segField('providers.codex.effort', 'f-ce', L('Codex 생각 정도', 'Codex reasoning effort'), L('높일수록 느려요', 'Higher is slower'), 'rec',
           [['low', L('낮음', 'Low')], ['medium', L('보통', 'Medium')], ['high', L('높음', 'High')]]),
         segField('providers.codex.speed', 'f-cs', L('Codex 속도', 'Codex speed'), L('빠르게는 약 1.5배 빠르지만 구독 사용량을 2.5배 써요', 'Fast is about 1.5x quicker but uses 2.5x of your plan limits'), 'rec',
@@ -769,12 +770,6 @@ export async function mount({content}) {
           h('li', null, L('볼트의 회의록 노트 (직접 지워 주세요)', 'The note in your vault (delete it yourself)')),
           h('li', null, L('외부 요약 엔진(Codex 등) 쪽에 남은 기록 — 각 서비스 정책을 따라요', 'Anything kept by external engines (Codex etc.) — their policies apply'))))),
       h('p', {class: 'small mt3'}, L('녹음마다 회의록 보기나 작업 화면에서 지워요. 처리 중이면 지금 단계를 마친 뒤 지워요.', 'Delete per recording from the note or Jobs screen. If it\'s running, deletion waits for the current step.')),
-      h('div', {class: 'list mt3'},
-        h('div', {class: 'list-head'}, h('h3', null, L('지운 녹음', 'Deleted recordings')), chip('idle', '—', L('아직 지원 안 함', 'Not supported yet')),
-          code('GET /api/tombstones')),
-        h('div', {class: 'item'}, h('div', null, h('p', {class: 'small muted'}, L('지운 녹음 목록과 복원 API가 아직 없어요.', 'There is no API yet to list deleted recordings or restore them.'))),
-          h('div', {class: 'side-r'}, h('span', {class: 'row gap6'}, btn({small: true, disabled: true, label: L('복원', 'Restore')}),
-            h('span', {class: 'why'}, L('복원 API가 없어요', 'No restore API')))))),
     ];
   }
 

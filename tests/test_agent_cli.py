@@ -76,6 +76,29 @@ def test_list_policy(api):
     assert [item['job_id'] for item in client.get('/api/meetings').json()['items']] == ['pending']
 
 
+def test_job_list_names_a_published_recording_by_its_minutes_title(api):
+    """Screens show the minutes' title large and the file name small. A job without a published run, or whose current run
+    has no title, carries null so the screens fall back to the file name (contract 9.2)."""
+    root, client, _ = api
+    schema = json.loads(Path('quietclerk/server/schema.json').read_text())
+    with closing(store.connect(root / 'state.sqlite3')) as con:
+        store.add_job(con, 'pending', 'b' * 64, 'new.m4a', None, 100, recorded_at='20261111-100000')
+    jobs = client.get('/api/jobs').json()
+    Draft202012Validator(schema | {'$ref': '#/$defs/Jobs'}).validate(jobs)
+    titles = lambda: {item['job_id']: item['title'] for item in client.get('/api/jobs').json()['items']}
+    assert titles() == {'ko': '한글 회의 제목', 'pending': None}
+    detail = client.get('/api/jobs/ko').json()
+    Draft202012Validator(schema | {'$ref': '#/$defs/Detail'}).validate(detail)
+    assert detail['job']['title'] == '한글 회의 제목'
+    with closing(store.connect(root / 'state.sqlite3')) as con:   # a newer published run that the engine could not title
+        con.execute("INSERT INTO runs(run_id,job_id,mode,settings_json,consent_json,status,started_at) VALUES('run-2','ko','auto','{}','{}','done',1)")
+        con.execute("UPDATE jobs SET current_run_id='run-2' WHERE job_id='ko'")
+    directory = root / 'work/ko/runs/run-2'
+    directory.mkdir(parents=True)
+    put(directory, 'classification.json', {'meta': {'title': None}})
+    assert titles() == {'ko': None, 'pending': None}
+
+
 @pytest.mark.parametrize('q', ['', 'x', '가' * 101, 'xx\x00yy', 'xx\u200byy', '\x1b[31m'])
 def test_search_policy(api, q):
     assert api[1].get('/api/search', params={'q': q}).status_code == 400

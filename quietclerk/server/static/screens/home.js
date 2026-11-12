@@ -1,13 +1,13 @@
 // Home: what is happening now, what needs a look, and today's minutes (design: docs/ui/home.html).
-// Data: /api/status (providers, phone), /api/events (engine, current job), /api/jobs, /api/settings,
-// /api/setup/checks (free disk space). Not in the API yet: note titles and languages, so today's
-// minutes are listed by recording name.
+// Data: /api/status (providers, phone), /api/events (engine, current job), /api/jobs (with each minutes' title), /api/settings,
+// /api/setup/checks (free disk space). Not in the API yet: note languages. Today's minutes are listed by title, with the
+// recording name beside it.
 import {h, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {get, post} from '../lib/api.js';
 import {live, subscribe, refreshStatus, elapsed} from '../lib/live.js';
 import {btn, chip, say, empty, problemBlock, announce} from '../lib/ui.js';
-import {describe, loadJobs, STAGES, stageLabel, providerLabel, LOGIN_COMMAND} from '../lib/jobs.js';
+import {describe, loadJobs, STAGES, stageLabel, providerLabel, jobName, fileNote, LOGIN_COMMAND} from '../lib/jobs.js';
 import {jobCard, makeActions, problemBanner, recheckLogin} from '../lib/cards.js';
 import {dur, clock, localTime, sameLocalDay, gigabytes, monthDayTime} from '../lib/fmt.js';
 import {setTitle, syncEngineControls} from '../lib/shell.js';
@@ -133,7 +133,7 @@ export async function mount({content}) {
     const jobs = state.jobs;
     if (!job) {
       const next = jobs.filter((j) => j.status === 'queued').sort((a, b) => a.created_at - b.created_at)[0];
-      return h('section', {class: 'card hero', 'aria-labelledby': 'now-h'},
+      return h('section', {class: 'card', 'aria-labelledby': 'now-h'},
         h('div', {class: 'card-head'}, h('h2', {id: 'now-h'}, L('지금 처리 중', 'Processing now')), chip('idle', '…', L('대기', 'Idle'))),
         h('p', null, v.paused ? L('일시정지 중이라 새 녹음은 기다려요.', 'Paused, so new recordings wait.') : L('처리할 녹음을 기다리고 있어요. 받는 폴더는 1분마다 확인해요.', 'Waiting for a recording. The inbox is checked every minute.')),
         next ? h('p', {class: 'small muted'}, L(`다음 차례: ${next.source_name}`, `Next: ${next.source_name}`)) : null);
@@ -144,11 +144,15 @@ export async function mount({content}) {
     const language = fixed ? L(`언어 고정 ${fixed === 'ko' ? '한국어' : '영어'}`, `language pinned: ${fixed === 'ko' ? 'Korean' : 'English'}`) : L('언어 자동 감지', 'language auto');
     const next = jobs.filter((j) => j.status === 'queued').sort((a, b) => a.created_at - b.created_at)[0];
     const progress = v.snapshot && v.snapshot.last_progress;
-    return h('section', {class: 'card hero', 'aria-labelledby': 'now-h'},
+    const known = jobs.find((j) => j.job_id === job.job_id) || job;   // the list knows the title of a job that is being redone
+    const file = fileNote(known);
+    // One emphasised card per screen: the stop notice takes it from this one.
+    return h('section', {class: 'card' + (v.engine === 'disk_low' ? '' : ' hero'), 'aria-labelledby': 'now-h'},
       h('div', {class: 'card-head'}, h('h2', {id: 'now-h'}, L('지금 처리 중', 'Processing now')), chip('run', '●', L('처리 중', 'Processing'))),
       h('div', {class: 'stack'},
-        h('div', null, h('div', {class: 'job-title'}, job.source_name),
-          h('div', {class: 'muted small'}, [L(`녹음 ${monthDayTime(job.recorded_at)}`, `Recorded ${monthDayTime(job.recorded_at)}`), job.duration_sec ? dur(job.duration_sec) : null, language].filter(Boolean).join(' · '))),
+        h('div', null, h('div', {class: 'job-title'}, jobName(known)),
+          h('div', {class: 'muted small'}, [L(`녹음 ${monthDayTime(job.recorded_at)}`, `Recorded ${monthDayTime(job.recorded_at)}`), job.duration_sec ? dur(job.duration_sec) : null, language].filter(Boolean).join(' · '),
+            file ? [' · ', h('span', {class: 'mono'}, file)] : null)),
         h('div', {class: 'dots', 'aria-hidden': 'true'}, STAGES.map((stage, i) => h('span', {class: i < index ? 'done' : i === index ? 'now' : '', title: L(stage[1], stage[2])}))),
         h('p', {class: 'ink', 'aria-live': 'polite'}, key ? [h('b', null, stageLabel(key)), L(` · ${STAGES.length}단계 중 ${index + 1}번째`, ` · step ${index + 1} of ${STAGES.length}`)] : L('시작하는 중', 'Starting')),
         h('dl', {class: 'kv num'},
@@ -182,7 +186,7 @@ export async function mount({content}) {
     const names = (state.settings['providers.order'] || []).filter((n) => by[n] && by[n].logged_in === false);
     const label = names.map(providerLabel).join(', ');
     return h('article', {class: 'card tight'},
-      h('div', {class: 'card-head'}, h('h3', null, L('요약 엔진에 로그인이 필요해요', 'Summary engines need sign-in')), chip('warn', '!', L('막힘 · 로그인', 'Blocked · sign-in'))),
+      h('div', {class: 'job-head'}, h('h3', null, L('요약 엔진에 로그인이 필요해요', 'Summary engines need sign-in')), chip('warn', '!', L('막힘 · 로그인', 'Blocked · sign-in'))),
       problemBlock({
         what: L(`녹음 ${blocked.length}개가 교정 단계 앞에서 기다려요. 받아쓰기까지는 끝났어요.`, `${blocked.length} recording(s) are waiting before the Correct step. Transcription is done.`),
         why: label ? L(`켜 둔 요약 엔진(${label})이 모두 로그인이 풀렸어요.`, `Every enabled summary engine (${label}) is signed out.`) : L('켜 둔 요약 엔진이 모두 로그인이 풀렸어요.', 'Every enabled summary engine is signed out.'),
@@ -195,7 +199,7 @@ export async function mount({content}) {
 
   function migrationCard(blocked) {
     return h('article', {class: 'card tight'},
-      h('div', {class: 'card-head'}, h('h3', null, L('노트 옮기기가 필요해요', 'Note conversion needed')), chip('warn', '!', L('막힘 · 노트 이행', 'Blocked · note conversion'))),
+      h('div', {class: 'job-head'}, h('h3', null, L('노트 옮기기가 필요해요', 'Note conversion needed')), chip('warn', '!', L('막힘 · 노트 이행', 'Blocked · note conversion'))),
       problemBlock({
         what: L(`새 회의록 ${blocked.length}개를 만들었지만 볼트에 아직 넣지 않았어요.`, `${blocked.length} new note(s) are written but not in your vault yet.`),
         why: L('볼트에 이전 형식 노트가 있어서, 새 형식으로 옮기기 전에는 볼트에 쓰지 않아요. 시도 횟수는 쓰지 않았어요.',
@@ -209,7 +213,7 @@ export async function mount({content}) {
     const {usable} = usableProviders(v);
     const next = usable.find((n) => n !== name);
     return h('article', {class: 'card tight'},
-      h('div', {class: 'card-head'}, h('h3', null, L(`${providerLabel(name)} 로그인이 끊겼어요`, `${providerLabel(name)} is signed out`)), chip('warn', '!', L('로그인 필요', 'Login needed'))),
+      h('div', {class: 'job-head'}, h('h3', null, L(`${providerLabel(name)} 로그인이 끊겼어요`, `${providerLabel(name)} is signed out`)), chip('warn', '!', L('로그인 필요', 'Login needed'))),
       problemBlock({
         what: next ? L(`${providerLabel(name)}로는 요약할 수 없어요. 대신 순서상 다음인 ${providerLabel(next)}로 처리해요.`, `${providerLabel(name)} can't summarise. The next provider in your order, ${providerLabel(next)}, is used instead.`)
           : L(`${providerLabel(name)}로는 요약할 수 없어요.`, `${providerLabel(name)} can't summarise.`),
@@ -264,13 +268,15 @@ export async function mount({content}) {
   function today() {
     const done = state.jobs.filter((j) => j.status === 'done' && j.note_path && sameLocalDay(j.updated_at)).sort((a, b) => b.updated_at - a.updated_at);
     return h('section', {class: 'list', 'aria-labelledby': 'today-h'},
-      h('div', {class: 'list-head'}, h('h2', {id: 'today-h'}, L('오늘 쓴 회의록', 'Minutes drafted today')), h('span', {class: 'muted'}, String(done.length)),
-        btn({kind: 'ghost', small: true, href: '/notes', label: L('전체 보기', 'View all')})),
+      h('div', {class: 'list-head counted'}, h('h2', {id: 'today-h'}, L('오늘 쓴 회의록', 'Minutes drafted today')), h('span', {class: 'count'}, String(done.length)),
+        h('span', {class: 'spacer'}), btn({kind: 'ghost', small: true, href: '/notes', label: L('전체 보기', 'View all')})),
       done.length ? done.map((job) => {
         const reasons = parseReasons(job);
+        const file = fileNote(job);
         return h('div', {class: 'item'},
-          h('div', null, h('a', {class: 't', href: `/notes/${encodeURIComponent(job.job_id)}`}, job.source_name),
-            h('div', {class: 'meta'}, h('span', null, localTime(job.updated_at)), job.duration_sec ? h('span', null, dur(job.duration_sec)) : null)),
+          h('div', null, h('a', {class: 't', href: `/notes/${encodeURIComponent(job.job_id)}`}, jobName(job)),
+            h('div', {class: 'meta'}, h('span', null, localTime(job.updated_at)), job.duration_sec ? h('span', null, dur(job.duration_sec)) : null,
+              file ? h('span', {class: 'file mono'}, file) : null)),
           h('div', {class: 'side-r'}, reasons.length ? chip('warn', '!', L(`확인 필요 ${reasons.length}`, `${reasons.length} to check`)) : null));
       }) : h('div', {class: 'item full'}, h('p', {class: 'small muted'}, L('오늘 쓴 회의록이 아직 없어요.', 'No minutes written today yet.'))));
   }

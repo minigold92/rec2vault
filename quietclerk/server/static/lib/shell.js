@@ -63,15 +63,33 @@ export function syncEngineControls(root = document) {
   }
 }
 
+// The engine box says whether the engine is working and how much waits: what a person wants to know, not where it listens.
 function engineBox() {
   const snapshot = live.snapshot;
+  const queued = (snapshot && snapshot.counts && snapshot.counts.queued) || 0;
+  const waiting = L(`대기 ${queued}개`, `${queued} waiting`);
   let state;
-  if (live.failed && restarting()) state = L('업데이트 중 · 다시 연결하는 중', 'Updating · reconnecting');
-  else if (live.failed) state = L('엔진 연결 끊김', 'Engine unreachable');
-  else if (!snapshot) state = L('엔진 확인 중', 'Checking the engine');
-  else if (snapshot.paused) state = L('엔진 켜짐 · 일시정지', 'Engine on · paused');
-  else state = L('엔진 켜짐', 'Engine on');
-  return h('div', {class: 'engine', 'aria-live': 'polite'}, h('b', null, state), h('span', {class: 'muted'}, location.host));
+  let detail = '';
+  if (live.failed && restarting()) {
+    state = L('업데이트 중 · 다시 연결하는 중', 'Updating · reconnecting');
+    detail = L('잠시만 기다려 주세요', 'This takes a moment');
+  } else if (live.failed) {
+    state = L('엔진 연결 끊김', 'Engine unreachable');
+    detail = live.lastEvent ? L(`마지막 확인 ${localTime(live.lastEvent.getTime() / 1000)}`, `Last seen ${localTime(live.lastEvent.getTime() / 1000)}`) : L('다시 연결을 기다려요', 'Waiting to reconnect');
+  } else if (!snapshot) {
+    state = L('엔진 확인 중', 'Checking the engine');
+  } else if (snapshot.engine === 'disk_low') {
+    state = L('엔진 멈춤 · 공간 부족', 'Engine stopped · low disk');
+    detail = waiting;
+  } else if (snapshot.paused) {
+    state = L('엔진 켜짐 · 일시정지', 'Engine on · paused');
+    detail = queued ? waiting : L('새 처리를 멈춰 뒀어요', 'No new processing');
+  } else {
+    state = L('엔진 켜짐', 'Engine on');
+    detail = snapshot.current_job ? (queued ? L(`처리 중 · 대기 ${queued}개`, `Processing · ${queued} waiting`) : L('처리 중', 'Processing'))
+      : queued ? waiting : L('대기 중인 녹음 없음', 'No recordings waiting');
+  }
+  return h('div', {class: 'engine', 'aria-live': 'polite'}, h('b', null, state), detail ? h('span', {class: 'muted'}, detail) : null);
 }
 
 function navLinks(current, withCount) {

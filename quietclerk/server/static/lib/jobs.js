@@ -36,6 +36,11 @@ export async function loadJobs() {
 
 export const isBlocked = (job) => job.status === 'retry_wait' && !!job.blocked_reason;
 
+// What a recording is called in lists: the title the engine gave its minutes, else the file name. When a title leads, the
+// file name is shown too, smaller (fileNote); without a title the file name is the heading and is not repeated.
+export const jobName = (job) => job.title || job.source_name || job.job_id;
+export const fileNote = (job) => (job.title && job.source_name ? job.source_name : null);
+
 const act = {
   resume: () => ({id: 'resume', label: L('이어서 처리', 'Resume'), kind: 'primary'}),
   redo: () => ({id: 'from_transcribe', label: L('처음부터 다시', 'Redo from scratch')}),

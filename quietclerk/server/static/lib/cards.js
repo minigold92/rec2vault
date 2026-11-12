@@ -3,7 +3,7 @@ import {h} from './dom.js';
 import {L} from './i18n.js';
 import {get, put, post, jobPath} from './api.js';
 import {banner, btn, chip, code, problemBlock, announce, apiProblem} from './ui.js';
-import {runAction} from './jobs.js';
+import {runAction, jobName, fileNote} from './jobs.js';
 import {dur, shortDate, shortEpoch} from './fmt.js';
 import {openConversion} from './note-conversion.js';
 
@@ -139,12 +139,16 @@ function history(job) {
   return h('details', {class: 'small', on: {toggle: load}}, h('summary', {class: 'summary-link'}, L('실행 기록', 'Run history')), body);
 }
 
-export function jobCard(job, view, handlers, {mono} = {}) {
+// One card per job: the name (the minutes' title when there is one, else the file name) with its state chip on the first
+// line; date, length and, under a title, the file name on the second.
+export function jobCard(job, view, handlers) {
+  const when = [shortDate(job.recorded_at), job.duration_sec ? dur(job.duration_sec) : null].filter(Boolean).join(' · ');
+  const file = fileNote(job);
   return h('article', {class: 'card tight'},
-    h('div', {class: 'card-head'},
-      h('h3', {class: mono ? 'mono fw7' : null}, job.source_name || job.job_id),
-      h('span', {class: 'small muted'}, [shortDate(job.recorded_at), job.duration_sec ? dur(job.duration_sec) : null].filter(Boolean).join(' · ')),
-      h('span', {class: 'spacer'}), chip(view.chip.kind, view.chip.glyph, view.chip.label)),
+    h('div', {class: 'job-head'},
+      h('div', {class: 'job-id'}, h('h3', null, jobName(job)),
+        when || file ? h('p', {class: 'small muted job-meta'}, when, when && file ? ' · ' : null, file ? h('span', {class: 'mono'}, file) : null) : null),
+      chip(view.chip.kind, view.chip.glyph, view.chip.label)),
     problemBlock({what: view.what, why: view.why, how: view.how, command: view.command,
       actions: view.actions.map((action) => control(job, action, handlers)), codes: view.codes}),
     view.history ? history(job) : null);

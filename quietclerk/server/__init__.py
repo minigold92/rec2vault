@@ -362,6 +362,25 @@ def note_view(runtime, job_id):
         'speakers': speakers[:50], 'sections': _summary_sections(summary['text'], spans), 'turns': lines}
 
 
+def meeting_title(runtime, row, cache):
+    """The title the engine gave this job's published minutes (the classification of its current run), None when it
+    gave none; the screens then show the recording's file name. A run's artifacts never change once published, so
+    each (job, run) is read once. Only a verified artifact inside the job's own work folder counts."""
+    from .. import notes
+    run_id = row['current_run_id']
+    if not run_id or row['legacy']:
+        return None
+    key = (row['job_id'], run_id)
+    if key not in cache:
+        root = runtime.settings.root
+        directory = root / 'work' / row['job_id'] / 'runs' / str(run_id)
+        classification = _artifact(directory, 'classification.json') if notes.safe_path(root / 'work', directory) else None
+        meta = classification.get('meta') if isinstance(classification, dict) else None
+        title = _text(meta.get('title'), 300) if isinstance(meta, dict) else None
+        cache[key] = title.strip() or None if title else None
+    return cache[key]
+
+
 def _slim_manifest(manifest):
     """The apply result without each note's property mapping (large; the preview already had it)."""
     entries = [{key: entry[key] for key in ('path', 'job_id', 'state') if key in entry} for entry in manifest.get('entries', [])]
@@ -395,6 +414,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
     idempotency = {}
     idempotency_lock = asyncio.Lock()
     migration_task = []   # the last consented migration request, so a screen can see how it ended
+    titles = {}           # (job_id, run_id) -> meeting title, for the job lists
 
     def migration_api(con, method, data):
         """GET: read-only preview + whether this output vault is migrated. POST {consent: true}: run the
@@ -574,7 +594,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     cursor = request.query_params.get('cursor', '')
                     rows = con.execute('SELECT * FROM jobs WHERE job_id>? AND (? IS NULL OR status=?) ORDER BY job_id LIMIT ?',
                                        (cursor, status, status, limit + 1)).fetchall()
-                    return JSONResponse({'items': [dict(row) for row in rows[:limit]],
+                    return JSONResponse({'items': [dict(row) | {'title': meeting_title(runtime, row, titles)} for row in rows[:limit]],
                                          'next_cursor': rows[limit - 1]['job_id'] if len(rows) > limit else None})
                 if path.startswith('/api/jobs/'):
                     job_id = request.path_params['job_id']
@@ -598,7 +618,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                             for stage in item['stages']:
                                 stage['sent_fields'] = json.loads(stage['sent_fields'] or '[]')
                             runs.append(item)
-                        return JSONResponse({'job': dict(row), 'runs': runs})
+                        return JSONResponse({'job': dict(row) | {'title': meeting_title(runtime, row, titles)}, 'runs': runs})
                     if action == 'audio' and method == 'GET':
                         return audio_response(runtime, con, job_id, request.headers.get('range'))
                     if method == 'POST' and action in ('process', 'include', 'exclude', 'delete-local'):

@@ -1,13 +1,13 @@
 // Minutes list and search: find a recording's minutes (design: docs/ui/notes.html).
-// Data: /api/jobs (jobs that have a note) for the list; /api/search (lib/search.js) for the box above it, which looks inside titles,
-// transcripts and summaries and shows the places that match, grouped by meeting. Not in the API yet: note titles, types, languages and
-// the draft/reviewed state (proposal: GET /api/notes), so list rows are named by the recording and the type and language filters are
-// shown off with their reason. The box keeps its text in the address (?q=), so Back from a result returns to the same search.
+// Data: /api/jobs (jobs that have a note, each with its minutes' title) for the list; /api/search (lib/search.js) for the box above it,
+// which looks inside titles, transcripts and summaries and shows the places that match, grouped by meeting. Types, languages and the
+// draft/reviewed state are not served, so the list has no filters for them. The box keeps its text in the address (?q=), so Back from
+// a result returns to the same search.
 import {h, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {subscribe} from '../lib/live.js';
 import {btn, chip, code, banner, empty} from '../lib/ui.js';
-import {loadJobs} from '../lib/jobs.js';
+import {loadJobs, jobName, fileNote} from '../lib/jobs.js';
 import {dur, shortDate} from '../lib/fmt.js';
 import {setTitle, syncEngineControls} from '../lib/shell.js';
 import {createSearch, registerInlineSearch} from '../lib/search.js';
@@ -57,14 +57,9 @@ export async function mount({content}) {
 
   function filters() {
     return h('div', {class: 'row', role: 'group', 'aria-label': L('목록 거르기', 'Filter the list')},
-      h('label', {class: 'sr-only', for: 'ft'}, L('유형', 'Type')),
-      h('select', {class: 'input compact', id: 'ft', disabled: true, 'aria-describedby': 'nf-why'}, h('option', null, L('모든 유형', 'All types'))),
-      h('label', {class: 'sr-only', for: 'fl'}, L('언어', 'Language')),
-      h('select', {class: 'input compact', id: 'fl', disabled: true, 'aria-describedby': 'nf-why'}, h('option', null, L('모든 언어', 'All languages'))),
-      h('label', {class: 'check small'},
+      h('label', {class: 'check inline small'},
         h('input', {type: 'checkbox', checked: state.onlyReview, on: {change: (event) => { state.onlyReview = event.target.checked; renderList(); }}}),
-        h('span', null, L('확인 필요만', 'Needs review only'))),
-      h('span', {class: 'why', id: 'nf-why'}, L('유형·언어·제목은 노트 목록 API(GET /api/notes)가 생기면 쓸 수 있어요.', 'Type, language and title need the notes API (GET /api/notes).')));
+        h('span', null, L('확인 필요만', 'Needs review only'))));
   }
 
   const listHost = h('div', {class: 'slot'});
@@ -72,12 +67,14 @@ export async function mount({content}) {
   function renderList() {
     const rows = visible();
     replace(listHost, h('section', {class: 'list', 'aria-labelledby': 'nl-h'},
-      h('div', {class: 'list-head'}, h('h2', {id: 'nl-h'}, L('엔진이 쓴 회의록', 'Minutes written by the engine')), h('span', {class: 'muted'}, L(`${rows.length}개`, String(rows.length)))),
+      h('div', {class: 'list-head counted'}, h('h2', {id: 'nl-h'}, L('엔진이 쓴 회의록', 'Minutes written by the engine')), h('span', {class: 'count'}, L(`${rows.length}개`, String(rows.length)))),
       rows.length ? rows.map((job) => {
         const reasons = reasonsOf(job);
+        const file = fileNote(job);
         return h('div', {class: 'item'},
-          h('div', null, h('a', {class: 't', href: `/notes/${encodeURIComponent(job.job_id)}`}, job.source_name),
+          h('div', null, h('a', {class: 't', href: `/notes/${encodeURIComponent(job.job_id)}`}, jobName(job)),
             h('div', {class: 'meta'}, h('span', null, shortDate(job.recorded_at)), job.duration_sec ? h('span', null, dur(job.duration_sec)) : null,
+              file ? h('span', {class: 'file mono'}, file) : null,
               job.status !== 'done' ? h('span', null, L('다시 만드는 중', 'Being redone')) : null)),
           h('div', {class: 'side-r'}, reasons.length ? chip('warn', '!', L(`확인 필요 ${reasons.length}`, `${reasons.length} to check`)) : null));
       }) : h('div', {class: 'item full'}, h('p', {class: 'small muted'}, L('조건에 맞는 회의록이 없어요.', 'No minutes match.')))));
@@ -91,7 +88,7 @@ export async function mount({content}) {
       h('div', {class: 'topbar'}, h('h1', null, L('회의록', 'Notes'))),
       h('p', {class: 'promise'}, L('회의록은 초안이에요. 중요한 결정과 할 일은 근거를 확인해 주세요.', 'Minutes are drafts. Check the evidence before relying on decisions and tasks.')),
       pending ? banner('warn', '!', [h('b', null, L(`새 회의록 ${pending}개를 아직 볼트에 넣지 않았어요.`, `${pending} new note(s) aren't in your vault yet.`)), ' ',
-        L('볼트에 이전 형식 노트가 있어서, 새 형식으로 옮긴 뒤에 넣어요.', 'Your vault still has old-format notes; new notes go in after conversion.'), ' ', code('blocked_reason=vault_migration')],
+        L('볼트에 이전 형식 노트가 있어서, 새 형식으로 옮긴 뒤에 넣어요.', 'Your vault still has old-format notes; new notes go in after conversion.')],
       [btn({small: true, href: '/migrate', label: L('노트 옮기기', 'Convert notes')})]) : null);
     searchPart.hidden = !total;   // nothing written yet: nothing to search
     replace(listPart, total ? [filters(), listHost] : h('section', {class: 'card'}, empty({bubble: L('아직 쓴 회의록이 없어요.', 'No minutes yet.'),

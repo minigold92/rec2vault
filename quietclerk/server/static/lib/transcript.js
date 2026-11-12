@@ -125,8 +125,7 @@ export function createTranscript({jobId, fallback, names, isRunning, onRunning, 
     const line = state.lines[i];
     const at = stamp(line.start);
     return [
-      h('span', null, h('button', {class: 'ts', type: 'button', 'data-engine': '', 'data-seek': `${line.start}-${line.end}`, 'aria-label': L(`${at} 구간 듣기`, `Play from ${at}`)}, at),
-        h('span', {class: 'id'}, line.id)),
+      h('span', null, h('button', {class: 'ts', type: 'button', 'data-engine': '', 'data-seek': `${line.start}-${line.end}`, 'aria-label': L(`${at} 구간 듣기`, `Play from ${at}`)}, at)),
       h('span', {class: 'sp'}, speakerCell(line)),
       editing(i) ? editCell(line) : viewCell(line, i),
     ];

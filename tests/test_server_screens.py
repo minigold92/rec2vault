@@ -714,7 +714,8 @@ def test_settings_update_toggle_and_check(harness, lang):
     result = run_ui(harness, 'settings', lang=lang, settings=settings, cases=cases)
     toggle = result['toggleView']
     assert (toggle['label'], toggle['help'], toggle['role'], toggle['checked']) == (t['label'], t['help'], 'switch', True)
-    assert 'updates.check' in toggle['tags'] and toggle['section'] == t['section'] and t['section'] in toggle['nav']
+    assert 'updates.check' not in toggle['tags'] and toggle['tip'] == 'updates.check'   # the key is the label's tooltip, not text on the page
+    assert toggle['section'] == t['section'] and t['section'] in toggle['nav']
     saved = result['savedView']   # switched off and saved like any other setting
     assert saved['puts'] == [{'updates.check': False}] and saved['checked'] is False and '1' in saved['bar']
     assert t['current'] in result['initial']['status'] and '11-10 13:10' in result['initial']['status']
@@ -851,7 +852,7 @@ def test_word_list_add_remove_and_save_body(harness, lang):
     assert seen['nav'][3] == t['nav'] == seen['section'] and t['redo'] in seen['intro']   # after Language, before Summary engines
     assert [(f['key'], f['label'], f['help']) for f in seen['fields']] == [
         ('vocabulary.terms', t['terms'], t['terms_help']), ('vocabulary.replace', t['fixes'], t['fixes_help']), ('providers.consent', t['send'], t['send_help'])]
-    assert all(t['apply'] in f['tags'] and f['key'] in f['tags'] for f in seen['fields'])   # "next recording" chip and the key it saves
+    assert all(t['apply'] in f['tags'] and f['key'] not in f['tags'] and f['tip'] == f['key'] for f in seen['fields'])   # the "next recording" chip; the key is only the label's tooltip
     assert seen['placeholder'] == t['example']
     initial = seen['initial']
     assert initial['terms'] == WORD_TERMS and initial['count'] == '2 / 200' and initial['bar'] == t['none']
@@ -974,7 +975,7 @@ def test_word_list_consent_box_in_settings(harness, lang):
     first = seen['initial']
     assert [(b['checked'], b['disabled']) for b in first['boxes']] == [(False, False), (True, False), (False, True)]
     assert t['no'] in first['boxes'][0]['text'] and t['yes'] in first['boxes'][1]['text'] and t['needs'] in first['boxes'][2]['text']
-    assert all('vocabulary' in box['text'] for box in first['boxes'])   # the field name is shown as the code tag
+    assert not any('vocabulary' in box['text'] for box in first['boxes'])   # the field name is a tooltip, not text on the page
     assert sends(t, WORD_CONSENT['codex']) in first['engines'][0] and sends(t, WORD_CONSENT['claude']) in first['engines'][1]
     assert t['sends'].format(t['nothing']) in first['engines'][2] and first['bar'] == t['none']
     assert (seen['field']['label'], seen['field']['help']) == (t['send'], t['send_help']) and t['apply'] in seen['field']['tags']
@@ -1030,7 +1031,7 @@ def test_setup_step_4_has_the_word_list_checkbox(harness, lang):
     seen = run_ui(harness, 'wizardConsent', lang=lang, providers=WORD_ENGINES[:2],
                   settings=word_settings(lang, **{'providers.order': ['codex'], 'providers.consent': {'codex': only_codex}}))
     assert [(box['code'], box['checked']) for box in seen['codex']] == [(field, field != 'vocabulary') for field in WORD_FIELDS]
-    assert seen['codex'][3]['text'] == f"{t['wiz_name']} vocabulary{t['used']}"
+    assert seen['codex'][3]['text'] == f"{t['wiz_name']}{t['used']}"
     assert t['wiz'] in seen['codexNote'] and seen['codexLink'] == '/settings#s-vocab' and not seen['claudeHasBoxes']
     enabled = seen['enabled']   # turning an engine on agrees to what it cannot work without, not to the word list
     assert enabled['put'] == [{'providers.order': ['codex', 'claude'], 'providers.consent': {'codex': only_codex, 'claude': only_codex}}]
@@ -1972,7 +1973,7 @@ const scenarios = {
     await settle();
     const field = document.querySelector('[data-key="updates.check"]');
     const toggle = field.querySelector('input');
-    const toggleView = {label: text(field.querySelector('label')), help: text(field.querySelector('.help')), role: toggle.getAttribute('role'), checked: toggle.checked,
+    const toggleView = {label: text(field.querySelector('label')), help: text(field.querySelector('.help')), role: toggle.getAttribute('role'), checked: toggle.checked, tip: field.querySelector('label').getAttribute('title'),
       tags: text(field.querySelector('.tags')), section: text(document.querySelector('#s-upd h2')), nav: document.querySelectorAll('a.chip').map((a) => text(a))};
     toggle.checked = !toggle.checked;
     toggle.dispatchEvent({type: 'change'});
@@ -2022,7 +2023,7 @@ const scenarios = {
   async vocabAdd({lang, settings}) {
     await openSettings({lang, settings});
     const seen = {nav: qa('nav a.chip').map(text), section: text(q('#s-vocab h2')), intro: text(q('#s-vocab .stack')),
-      fields: qa('#s-vocab .field').map((f) => ({key: f.getAttribute('data-key'), label: text(f.querySelector('label')), help: text(f.querySelector('.help')), tags: text(f.querySelector('.tags'))})),
+      fields: qa('#s-vocab .field').map((f) => ({key: f.getAttribute('data-key'), label: text(f.querySelector('label')), tip: f.querySelector('label').getAttribute('title'), help: text(f.querySelector('.help')), tags: text(f.querySelector('.tags'))})),
       placeholder: q('#f-vt').getAttribute('placeholder'), initial: wordView()};
     addWord('  책마루  ');
     seen.added = {...wordView(), focus: document.activeElement.getAttribute('id')};
@@ -2201,14 +2202,14 @@ const scenarios = {
     await settle();
     const card = (name) => qa('li.card').find((c) => text(c.querySelector('h3')) === name);
     const fieldset = (name) => card(name).querySelector('fieldset');
-    const boxes = (name) => fieldset(name).querySelectorAll('label.check').map((label) => ({code: text(label.querySelector('code')), checked: label.querySelector('input').checked, text: text(label)}));
+    const boxes = (name) => fieldset(name).querySelectorAll('label.check').map((label) => ({code: label.querySelector('span').getAttribute('title'), checked: label.querySelector('input').checked, text: text(label)}));
     const seen = {codex: boxes('Codex CLI'), codexNote: text(fieldset('Codex CLI').querySelector('p.small')), codexLink: fieldset('Codex CLI').querySelector('a').getAttribute('href'),
       claudeHasBoxes: !!card('Claude Code').querySelector('fieldset')};
     card('Claude Code').querySelector('label.switch input').checked = true;
     card('Claude Code').querySelector('label.switch input').dispatchEvent({type: 'change'});
     await settle();
     seen.enabled = {claude: boxes('Claude Code'), put: savedBodies().slice(-1)};
-    const claudeBox = (code) => fieldset('Claude Code').querySelectorAll('label.check').find((label) => text(label.querySelector('code')) === code).querySelector('input');
+    const claudeBox = (code) => fieldset('Claude Code').querySelectorAll('label.check').find((label) => label.querySelector('span').getAttribute('title') === code).querySelector('input');
     claudeBox('vocabulary').checked = true;
     claudeBox('vocabulary').dispatchEvent({type: 'change'});
     await settle();

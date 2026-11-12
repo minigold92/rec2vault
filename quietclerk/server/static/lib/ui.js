@@ -6,7 +6,9 @@ import {L} from './i18n.js';
 export const chip = (kind, glyph, label) =>
   h('span', {class: `chip ${kind}`}, glyph ? h('i', {'aria-hidden': 'true'}, glyph) : null, label);
 
-export const code = (text) => h('span', {class: 'code-tag'}, text);
+// A status code may wrap, but only after _ = : . / so a word is never cut in the middle (<wbr> adds nothing to copied text).
+const breakAfter = (text) => (String(text).match(/[^_=:./]+[_=:./]?|[_=:./]/g) || ['']).flatMap((part, i) => (i ? [h('wbr'), part] : [part]));
+export const code = (text) => h('span', {class: 'code-tag'}, ...breakAfter(text));
 
 // A control that needs the engine is marked data-engine; the shell disables it while the engine is
 // unreachable. A control the API cannot serve yet is rendered disabled with its reason (.why) beside it.
