@@ -7,6 +7,8 @@
 <title>QuietClerk</title>
 <link rel="icon" type="image/svg+xml" href="/static/seogi.svg">
 <link rel="stylesheet" href="/static/qc.css">
+{% for module in modulepreloads %}<link rel="modulepreload" href="/static/{{ module }}">
+{% endfor %}
 <script type="module" src="/static/app.js"></script>
 </head>
 <body data-screen="{{ screen }}"{% if job_id %} data-job="{{ job_id }}"{% endif %}>

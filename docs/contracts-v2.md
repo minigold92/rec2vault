@@ -20,6 +20,8 @@
 | LLM CLI | 동시에 최대 1 | 교정·분류·요약 | 실행자. 자기 프로세스 그룹 |
 | Ollama HTTP 요청 | 동시에 최대 1 | 같음 | 실행자. 제한 시간에 요청만 취소. Ollama 서버는 건드리지 않음 |
 
+- macOS에서 `serve`는 launchd `ProcessType=Interactive`로 화면·API에 응답한다. HTTP 기반이므로 XPC 기반 `Adaptive` 전환은 쓰지 않는다. 모델 워커·LLM CLI·미디어 도구는 공통 자식 실행 경로에서 `/usr/sbin/taskpolicy -b`로 시작해 기존 Darwin background CPU/I/O 정책을 유지한다. 자식·손자와 프로세스 그룹 종료 규칙은 그대로다. 일회용 selfupdate 작업의 plist는 `Background`를 유지한다.
+  근거: Apple `launchd.plist(5)`([매뉴얼](https://keith.github.io/xcode-man-pages/launchd.plist.5.html#ProcessType)): `Standard`도 가벼운 CPU/I/O 제한을 적용하며, `Interactive`는 앱의 반응성이 해당 작업에 의존하고 `Adaptive`를 쓸 수 없을 때만 쓴다. `taskpolicy(8)`의 `-b`는 `PRIO_DARWIN_BG`를 적용하고 후손에게 상속된다.
 - **서비스 잠금**은 데이터 루트와 무관한 사용자 고정 위치 `~/Library/Application Support/QuietClerk/serve.lock`(`flock`). 못 잡으면 오류로 끝난다.
 - `serve`는 시작 때 부팅 ID(무작위 128비트)를 만든다. 실행자 스레드가 예외로 죽으면 프로세스 전체가 0이 아닌 코드로 끝난다.
 - 구 1분 주기 에이전트(`local.rec.pipeline`, 사용자 지정 label 포함)가 등록돼 있으면 `serve`는 시작하지 않고 "업그레이드 이행이 필요해요"를 남긴다. 교체는 10절 이행 절차로만.
@@ -475,6 +477,7 @@ class Provider(Protocol):
 - 모든 `/api` 요청(GET, 오디오, SSE 포함)에 세션 필요. 예외는 데이터를 담지 않는 `GET /`와 `GET /bootstrap.js`뿐(bootstrap 교환을 위한 정적 응답, 같은 CSP·no-store·Host 검사 적용). `Host`는 `127.0.0.1:<port>`·`localhost:<port>`만. 상태 변경은 `Origin` 일치 + `X-CSRF-Token`. CORS 없음. 상태 변경 GET 없음.
 - CSP: `default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`.
 - 같은 네트워크 접근은 M1에서 **끈다**(설정 항목 없음). 켜는 작업은 TLS·장치 권한·폐기·Host 규칙을 따로 설계한 뒤.
+- 인증된 `/static/` 파일은 서비스 시작 시 허용 확장자·정확한 이름으로 색인하고 바이트를 메모리에 보관한다(요청 중 파일 읽기·스레드풀 없음). 내용 SHA-256의 인용된 ETag와 `Cache-Control: no-cache`로 매번 재검증하고, `If-None-Match` 일치(약한 태그·목록·`*` 포함)면 본문 없는 304를 반환한다. 인증·Host·CSP 검사는 304에도 적용한다. 화면/API/오류는 계속 `no-store`다. 배포 정적 파일 변경은 서비스 재시작 때 반영한다. 같은 색인의 모든 JS 모듈을 `<head>`의 `modulepreload`로 자동 생성해 import 단계별 발견 지연과 수동 목록 누락을 없앤다.
 
 ### 9.2 엔드포인트 (JSON 스키마는 `quietclerk/server/schema.json`으로 함께 관리)
 
@@ -559,6 +562,8 @@ engine update/rollback은 두 기록도 기존 plist와 같은 트랜잭션으�
 등록은 잠금·bootstrap/start·신선한 인증 상태 확인, 해제는 bootout·실행 잠금 회수·LaunchAgents
 plist 삭제다. 앱 소유 기록 없는 기존 CLI 설치는 변경하지 않는다. Rust는 이 명령을 부르기만 하며,
 별도 plist/launchctl 쓰기 구현을 두지 않는다. 상세 파일 형식·공존·실측은 `contracts-app.md` 6절.
+
+- v2 업데이트(`setup.sh update`, selfupdate 공통)는 기존 plist의 인터프리터와 `ProcessType=Interactive`를 함께 바꾼다. 운영 환경 변수·다른 plist 키는 보존하며, 실패 시 이전 ProcessType을 포함한 plist 바이트를 정확히 복구하고 이전 서비스를 다시 인증 확인한다.
 
 A1(0.0.3)의 앱 경로는 `--app-manifest <번들 manifest>`·`--app-tools <서명된 도구 폴더>`를
 `install --app-install`/앱 소유 `update`에만 전달한다. manifest의 wheel·의존성 목록 SHA-256을

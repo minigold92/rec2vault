@@ -2,6 +2,7 @@
 import os
 import signal
 import subprocess
+import sys
 import time
 
 TimeoutExpired = subprocess.TimeoutExpired
@@ -55,7 +56,10 @@ def run(args, *, timeout=900, stage='external', grace=10, input=None, capture_ou
         kwargs['stdin'] = subprocess.PIPE
     if capture_output:
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    process = subprocess.Popen(args, cwd=cwd, env=env, text=text, start_new_session=True, **kwargs)
+    # The UI server is Interactive; heavy pipeline work keeps Darwin background
+    # scheduling/I/O policy. taskpolicy execs in place, preserving group cleanup.
+    command = ['/usr/sbin/taskpolicy', '-b', *args] if sys.platform == 'darwin' else args
+    process = subprocess.Popen(command, cwd=cwd, env=env, text=text, start_new_session=True, **kwargs)
     try:
         stdout, stderr = process.communicate(input=input, timeout=timeout)
     except subprocess.TimeoutExpired as exc:

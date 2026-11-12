@@ -96,8 +96,10 @@ class Security:
             scope['qc.session'] = session
         async def secure_send(message):
             if message['type'] == 'http.response.start':
+                if not any(key.lower() == b'cache-control' for key, _ in message['headers']):
+                    message['headers'].append((b'cache-control', b'no-store'))
                 message['headers'] += [(b'content-security-policy', CSP.encode()),
-                                       (b'cache-control', b'no-store'), (b'referrer-policy', b'no-referrer'),
+                                       (b'referrer-policy', b'no-referrer'),
                                        (b'x-content-type-options', b'nosniff')]
             await send(message)
         if response:
@@ -198,9 +200,15 @@ def audio_response(runtime, con, job_id, range_header):
 
 
 def static_index():
+    """Snapshot packaged assets once; requests never touch disk or a thread pool."""
     base = STATIC.resolve()
-    return {path.relative_to(base).as_posix(): path for path in sorted(base.rglob('*'))
-            if path.suffix in STATIC_TYPES and path.is_file() and not path.is_symlink()}
+    assets = {}
+    for path in sorted(base.rglob('*')):
+        if path.suffix in STATIC_TYPES and path.is_file() and not path.is_symlink():
+            content = path.read_bytes()
+            assets[path.relative_to(base).as_posix()] = (
+                content, STATIC_TYPES[path.suffix], '"' + hashlib.sha256(content).hexdigest() + '"')
+    return assets
 
 
 def _read_regular(path, limit):
@@ -434,16 +442,24 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
 
     templates = Environment(loader=FileSystemLoader(TEMPLATES), autoescape=True, undefined=StrictUndefined)
     static = static_index()
+    modulepreloads = tuple(name for name in static if name.endswith('.js'))
 
     async def static_file(request):
-        path = static.get(request.path_params['name'])
-        if path is None:
+        asset = static.get(request.path_params['name'])
+        if asset is None:
             return Response(status_code=404)
-        return Response(await run_in_threadpool(path.read_bytes), media_type=STATIC_TYPES[path.suffix])
+        content, media_type, etag = asset
+        headers = {'ETag': etag, 'Cache-Control': 'no-cache'}
+        # If-None-Match uses weak comparison for GET/HEAD, including a tag list.
+        candidates = (value.strip() for value in request.headers.get('if-none-match', '').split(','))
+        if any(value == '*' or value.removeprefix('W/') == etag for value in candidates):
+            return Response(status_code=304, headers=headers)
+        return Response(content, media_type=media_type, headers=headers)
 
     def page(screen, *, job_id=None, data=None, status=200):
         html = templates.get_template('app.html').render(
-            lang=runtime.settings.get('ui.language'), screen=screen, job_id=job_id, data=data)
+            lang=runtime.settings.get('ui.language'), screen=screen, job_id=job_id, data=data,
+            modulepreloads=modulepreloads)
         return HTMLResponse(html, status)
 
     def plain_screen(screen):

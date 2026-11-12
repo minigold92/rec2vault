@@ -648,7 +648,7 @@ def _update_settings(paths, service):
 
 
 def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
-    """Replace only a v2 service's interpreter, never migrate or restore user data.
+    """Update a v2 service's interpreter and UI priority, never restore user data.
 
     Prepare while the old engine runs; hold both execution locks across cutover,
     then hand them to serve. Partial unload/bootstrap and failed health checks
@@ -692,7 +692,7 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             f'Check {LABEL} is registered (not probed in dry-run)',
             'Prepare fresh venv, imports and models while the old service runs',
             'Stop service; wait for serve.lock and tick.lock before cutover',
-            'Replace plist interpreter; restart; verify authenticated status',
+            'Replace plist interpreter and Interactive ProcessType; restart; verify authenticated status',
             'On failure: restore exact old plist; restart and verify old service',
             'Keep previous venv; remove older managed venvs; leave DB/settings/notes untouched']
     if dry_run:
@@ -723,6 +723,7 @@ def update(*, root=None, dry_run=False, adapter=None, fault=None, **locations):
             point('locked')
             settings = _update_settings(paths, service)  # Include settings saved during preparation.
             service['ProgramArguments'] = [str(venv / 'bin/python'), *argv[1:]]
+            service['ProcessType'] = 'Interactive'
             if (paths.support / APP_RECORD).exists():
                 for binary in ('uv', 'ffmpeg', 'ffprobe'):
                     if (venv / 'bin' / binary).is_file():

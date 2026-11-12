@@ -621,6 +621,7 @@ def test_update_restarts_new_interpreter_and_preserves_user_bytes(v2_root, tmp_p
     old_plist = plistlib.loads(before[adapter.plist])
     # Preserve operational overrides and legacy-label guards, not just defaults.
     old_plist['EnvironmentVariables']['EXAMPLE_LITERAL'] = '$(must not execute)'
+    old_plist['ProcessType'] = 'Background'
     adapter.plist.write_bytes(plistlib.dumps(old_plist))
     old_python = old_plist['ProgramArguments'][0]
     stale = root / '.venvs' / ('f' * 32)
@@ -638,6 +639,7 @@ def test_update_restarts_new_interpreter_and_preserves_user_bytes(v2_root, tmp_p
     assert Path(old_python).is_file()
     expected = dict(old_plist)
     expected['ProgramArguments'] = [new_python, *old_plist['ProgramArguments'][1:]]
+    expected['ProcessType'] = 'Interactive'
     assert new_plist == expected
     assert adapter.health_interpreters == [new_python]
     assert adapter.labels == {install.LABEL}
@@ -652,6 +654,11 @@ def test_update_restarts_new_interpreter_and_preserves_user_bytes(v2_root, tmp_p
 @pytest.mark.parametrize('stage', ['environment', 'models', 'unloaded', 'locked',
                                     'plist', 'registered', 'started', 'healthy'])
 def test_update_every_stage_failure_restores_plist_registration_and_user_bytes(v2_root, stage):
+    plist = v2_root['agents'] / (install.LABEL + '.plist')
+    old_service = plistlib.loads(plist.read_bytes())
+    old_service['ProcessType'] = 'Background'
+    # Preserve even noncanonical whitespace, not just the old parsed values.
+    plist.write_bytes(plistlib.dumps(old_service).replace(b'<dict>', b'<dict>\n\n', 1))
     before = update_bytes(v2_root)
     adapter = UpdateMac(v2_root)
     def fail(point):
@@ -859,3 +866,9 @@ def test_update_keeps_only_immediate_previous_managed_environment(v2_root):
     assert len(remaining) == 2
     assert not remaining & original
     assert intermediate <= remaining
+
+
+def test_new_service_uses_interactive_priority(tmp_path):
+    paths = install.layout(root=tmp_path / 'data', home=tmp_path, source=SOURCE)
+    service = plistlib.loads(install.service_plist(paths, tmp_path / 'venv', ()))
+    assert service['ProcessType'] == 'Interactive'

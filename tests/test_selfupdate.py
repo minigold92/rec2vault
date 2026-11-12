@@ -228,6 +228,9 @@ def test_worker_success_failure_checkout_plist_restore_and_dismiss(tmp_path, rep
     advance(writer)
     before = runtime.updates.check()
     plist = paths['agents'] / (install.LABEL + '.plist')
+    old_service = plistlib.loads(plist.read_bytes())
+    old_service['ProcessType'] = 'Background'
+    plist.write_bytes(plistlib.dumps(old_service).replace(b'<dict>', b'<dict>\n\n', 1))
     original_plist = plist.read_bytes()
     # Health failure exercises real install.update rollback, not a fake updater.
     adapter = UpdateMac(paths, fail='unhealthy')
@@ -246,6 +249,7 @@ def test_worker_success_failure_checkout_plist_restore_and_dismiss(tmp_path, rep
                                  target=before['latest']['commit'], updater=lambda **kw: install.update(
                                      **kw, adapter=adapter), **paths)
     assert done['state'] == 'done' and done['installed'] == before['latest']
+    assert plistlib.loads(plist.read_bytes())['ProcessType'] == 'Interactive'
     assert done['previous_commit'] == before['installed']['commit']
     assert selfupdate.Updates(runtime).snapshot()['state'] == 'done'
     assert runtime.updates.dismiss()['state'] == 'current'
@@ -323,6 +327,7 @@ def test_launchd_worker_has_external_literal_command(runtime, repo, monkeypatch)
     job = plistlib.loads(Path(argv[3]).read_bytes())
     assert label.startswith('local.quietclerk.update.') and job['Label'] == label
     assert job['KeepAlive'] is False and job['RunAtLoad'] is True
+    assert job['ProcessType'] == 'Background'  # One-shot updates do not serve the UI.
     assert job['EnvironmentVariables']['PATH'] == os.environ['PATH']
     assert job['EnvironmentVariables']['HF_HUB_OFFLINE'] == '1'
     command = job['ProgramArguments']

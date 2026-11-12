@@ -76,3 +76,26 @@ def test_contract_timeouts():
     assert procs.timeout_for('transcribe', 2100) == 3150
     assert procs.timeout_for('second_pass', 2100) == 3150
     assert procs.timeout_for('correct', 2100) == 900
+
+
+@pytest.mark.parametrize('command', [
+    [sys.executable, '-m', 'quietclerk.worker', '--stage', 'transcribe'],
+    ['codex', 'exec', '-'],
+    ['claude', '-p', 'synthetic prompt'],
+])
+@pytest.mark.parametrize('platform', ['darwin', 'linux'])
+def test_pipeline_children_keep_background_priority(monkeypatch, command, platform):
+    calls = []
+    class Child:
+        returncode = 0
+
+        def communicate(self, **kwargs):
+            return ('synthetic result', '')
+
+    monkeypatch.setattr(sys, 'platform', platform)
+    monkeypatch.setattr(procs.subprocess, 'Popen', lambda args, **kw: calls.append((args, kw)) or Child())
+    result = procs.run(command, capture_output=True, text=True)
+    expected = ['/usr/sbin/taskpolicy', '-b', *command] if platform == 'darwin' else command
+    assert calls[0][0] == expected
+    assert calls[0][1]['start_new_session'] is True
+    assert result.args == command

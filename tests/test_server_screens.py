@@ -197,7 +197,7 @@ def test_static_files_need_a_session(api):
         response = client.get('/static/' + name)
         assert response.status_code == 200 and response.content, name
         assert response.headers['content-type'].split(';')[0] == types[Path(name).suffix]
-        assert response.headers['cache-control'] == 'no-store' and response.headers['x-content-type-options'] == 'nosniff'
+        assert response.headers['cache-control'] == 'no-cache' and response.headers['x-content-type-options'] == 'nosniff'
         assert "default-src 'self'" in response.headers['content-security-policy']
 
 
@@ -2246,3 +2246,45 @@ const out = await scenarios[scenario](params);
 console.log('RESULT ' + JSON.stringify(out));
 process.exit(0);
 '''
+
+
+def test_static_etag_revalidation_and_memory_snapshot(api, monkeypatch):
+    import hashlib
+    client, runtime, base = api
+    login(client, runtime, base)
+    content = (STATIC / 'app.js').read_bytes()
+    etag = '"' + hashlib.sha256(content).hexdigest() + '"'
+    original_read = Path.read_bytes
+
+    def no_static_read(path):
+        assert not path.is_relative_to(STATIC), 'static file read during request'
+        return original_read(path)
+
+    monkeypatch.setattr(Path, 'read_bytes', no_static_read)
+    def no_threadpool(*args, **kwargs):
+        raise AssertionError('static request entered thread pool')
+
+    monkeypatch.setattr('quietclerk.server.run_in_threadpool', no_threadpool)
+    response = client.get('/static/app.js')
+    assert response.status_code == 200 and response.content == content
+    assert response.headers['etag'] == etag
+    assert response.headers['cache-control'] == 'no-cache'
+    assert response.headers['content-security-policy']
+    for candidate in (etag, 'W/' + etag, '"older", W/' + etag, '*'):
+        cached = client.get('/static/app.js', headers={'If-None-Match': candidate})
+        assert cached.status_code == 304 and cached.content == b''
+        assert cached.headers['etag'] == etag
+        assert cached.headers['cache-control'] == 'no-cache'
+    assert client.get('/static/app.js', headers={'If-None-Match': '"different"'}).status_code == 200
+    assert client.head('/static/app.js', headers={'If-None-Match': etag}).status_code == 304
+    client.cookies.clear()
+    assert client.get('/static/app.js', headers={'If-None-Match': etag}).status_code == 401
+
+
+def test_modulepreload_tracks_static_modules(api):
+    client, runtime, base = api
+    login(client, runtime, base)
+    html = client.get('/home').text
+    preloads = set(re.findall(r'<link rel="modulepreload" href="/static/([^"]+)">', html))
+    expected = {path.relative_to(STATIC).as_posix() for path in STATIC.rglob('*.js')}
+    assert preloads == expected
