@@ -1,5 +1,17 @@
 # Changelog / 변경 기록
 
+## 0.0.11
+
+### 한국어
+
+- 화면이 빨라졌습니다. 화면·API를 맡는 엔진은 macOS 반응형 우선순위로 돌고, 받아쓰기·요약은 지금처럼 백그라운드에서 돕니다. 화면 파일은 시작할 때 메모리에 올려 두고 바뀐 것만 다시 받으며, 필요한 파일을 한 번에 받습니다. 업데이트할 때 이 설정도 바뀌고, 실패하면 이전 서비스 설정으로 되돌립니다.
+- 화면을 다듬었습니다. 한국어/English 전환은 같은 너비 두 칸, 목록은 파일 이름 대신 회의 제목, 사이드바 엔진 상자는 포트 대신 상태를 보입니다. 설정 키·API 이름·대화록 줄 번호 같은 개발자용 글자를 화면에서 내렸고, 아직 쓸 수 없는 필터·탭을 숨겼습니다. 버튼·입력·칩 높이와 엔진 카드 배치를 맞췄습니다.
+
+### English
+
+- Faster screens. The engine's screen and API process runs at macOS interactive priority while transcription and summaries stay in the background. Static files are loaded into memory at start, revalidated instead of re-sent, and fetched in one go. Updates apply this setting and roll back to the previous service definition on failure.
+- Polished screens: equal-width language switch, meeting titles instead of file names in lists, engine status instead of a port in the sidebar, developer text (setting keys, API names, transcript line IDs) moved out of view, unavailable filters and tabs hidden, consistent control heights and engine cards.
+
 ## 0.0.10
 
 ### 한국어
