@@ -456,11 +456,13 @@ class Provider(Protocol):
 | 제공자 | `tool_block` | 호출 방식 | 근거 수준 |
 |---|---|---|---|
 | Claude Code 2.1.319 | `verified` | `claude -p --tools "" --strict-mcp-config --safe-mode --disable-slash-commands --setting-sources "" --permission-mode dontAsk`(stdin 프롬프트). 모델에 보이는 도구 0개 | 실제 CLI·가상 입력(MacBook). Mac mini에는 아직 미설치·미로그인 |
-| Codex 0.163–0.167 | `verified`(아래 명령 조건) | `codex exec --sandbox read-only --ephemeral --ignore-user-config --ignore-rules -c features.shell_tool=false -c web_search="disabled" -c features.apps=false -c features.plugins=false -c features.view_image=false -c features.image_generation=false -c features.hooks=false`. 도구 선언 일부(`apply_patch`, `spawn_agent` 등)는 남고 샌드박스·설정이 거부하는 방식이라, `--json` 이벤트에서 `command_execution`·`file_change`·`mcp_tool_call`·`web_search`가 보이면 `ToolUseDetected` | 실제 CLI·가상 입력(MacBook·Mac mini). **운영 파이프라인에 2026-11-09 적용**, Mac mini에서 직접 지시 대조 시험으로 파일 읽기 실패 확인 |
+| Codex 0.163–0.167, 0.170 | `verified`(아래 명령 조건) | `codex exec --sandbox read-only --ephemeral --ignore-user-config --ignore-rules -c features.shell_tool=false -c web_search="disabled" -c features.apps=false -c features.plugins=false -c features.view_image=false -c features.image_generation=false -c features.hooks=false`. 도구 선언 일부(`apply_patch`, `spawn_agent` 등)는 남고 샌드박스·설정이 거부하는 방식이라, `--json` 이벤트에서 `command_execution`·`file_change`·`mcp_tool_call`·`web_search`가 보이면 `ToolUseDetected` | 실제 CLI·가상 입력(MacBook·Mac mini). **운영 파이프라인에 2026-11-09 적용**, Mac mini에서 직접 지시 대조 시험으로 파일 읽기 실패 확인 |
 | Gemini CLI 0.46.0 | `unsupported` | 개인 Google 계정 구독 인증을 서버가 거절(`IneligibleTierError`). 모의 서버로는 `--admin-policy` 전체 거부로 도구 0개 | 모의 서버(가정)·문서 |
 | Ollama | 미정 | 8.2절, 로컬 실행 판별 방법 확인 전까지 `unknown` | — |
 | omp 18.18.3 | `unverified` | `omp -p --no-session --no-tools --no-extensions --no-skills --no-rules --no-context-files --no-lsp --no-title`. 내장 도구는 0개가 되고 직접 지시해도 미끼 파일을 못 읽었다. 그러나 `~/.omp/agent/mcp.json`의 MCP 도구(41개)가 `--tools=`로도 빠지지 않는다 → MCP 없는 전용 프로필(`--profile quietclerk`)에서 다시 시험해야 함(그 프로필에 한 번 로그인 필요, 사용자 작업·나중) | 실제 CLI·가상 입력(MacBook, 2026-11-09). Mac mini 미설치 |
 | pi(`@mariozechner/pi-coding-agent` 0.73.1) | 미정 | 이 MacBook·Mac mini 모두 미설치. 구독 로그인 후 같은 미끼 시험 필요(사용자 작업·나중) | 확인 못 함 |
+
+- Codex 0.170.0(2026-11-23, Mac mini 실제 CLI): 같은 명령으로 미끼 파일 읽기 지시 → 셸 도구 없음, 파일 내용 미노출. 모델은 MCP 리소스 목록 조회를 시도했으며(`mcp_tool_call` 이벤트) 엔진은 이를 도구 사용으로 보고 그 호출을 실패 처리한다. 0.168·0.169는 확인하지 않아 `unverified`. Codex가 자동 업데이트되면 새 버전은 확인 전까지 막히고 녹음은 요약 단계에서 기다린다(운영 발견 2026-11-23: 0.170 자동 업데이트로 11/20부터 7건 대기).
 
 - 따라서 사용자가 고른 4종 중 **지금 쓸 수 있는 구독 CLI는 Codex와 Claude**다. Gemini CLI는 구독 경로가 막혀 지원 대상에서 빠진다(API 키 방식은 사용자 결정 범위 밖). 
 - 남은 확인: Codex `web_search` 차단 실측(E8b 구현 직후), 실제 녹음 파이프라인에서 차단 호출 확인(E8b 완료 기준).

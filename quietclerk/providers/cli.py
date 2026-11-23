@@ -83,12 +83,16 @@ class CLI:
         return 'unverified'
 
 
+VERIFIED_CODEX_MINORS = frozenset(range(163, 168)) | {170}
+
+
 class Codex(CLI):
     name = 'codex'
 
     def verification(self, version):
         parts = tuple(map(int, version.split('.'))) if version else ()
-        return 'verified' if len(parts) == 3 and parts[0] == 0 and 163 <= parts[1] <= 167 else 'unverified'
+        # Only minors whose flags were checked with a real canary (contract 8.5); 0.170 on 2026-11-23.
+        return 'verified' if len(parts) == 3 and parts[0] == 0 and parts[1] in VERIFIED_CODEX_MINORS else 'unverified'
 
     def complete(self, prompt, *, timeout):
         started = time.monotonic()

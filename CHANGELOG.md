@@ -1,5 +1,15 @@
 # Changelog / 변경 기록
 
+## 0.0.12
+
+### 한국어
+
+- Codex CLI 0.170을 도구 차단 확인 버전에 넣었습니다. Codex가 0.170으로 자동 업데이트된 뒤 확인 전 버전으로 막혀, 녹음이 교정·요약 단계에서 멈춰 있었습니다. 확인 후 대기 중인 녹음은 자동으로 이어서 처리됩니다.
+
+### English
+
+- Added Codex CLI 0.170 to the tool-block verified versions. After Codex auto-updated to 0.170 it was treated as unverified and recordings waited at the correction/summary stage; they resume automatically.
+
 ## 0.0.11
 
 ### 한국어

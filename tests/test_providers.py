@@ -212,7 +212,7 @@ print(json.dumps({'type':'result','result':'ok'}))
     assert Claude({}).complete('synthetic', timeout=3).text == 'ok'
 
 
-@pytest.mark.parametrize('version, expected', [('0.162.9', 'unverified'), ('0.163.0', 'verified'), ('0.167.9', 'verified'), ('0.168.0', 'unverified')])
+@pytest.mark.parametrize('version, expected', [('0.162.9', 'unverified'), ('0.163.0', 'verified'), ('0.167.9', 'verified'), ('0.168.0', 'unverified'), ('0.169.3', 'unverified'), ('0.170.0', 'verified'), ('0.171.0', 'unverified')])
 def test_codex_supported_versions(version, expected):
     assert Codex({}).verification(version) == expected
     assert Claude({}).verification('2.1.319') == 'verified'
