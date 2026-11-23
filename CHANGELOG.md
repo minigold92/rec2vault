@@ -1,5 +1,17 @@
 # Changelog / 변경 기록
 
+## Unreleased
+
+### 한국어
+
+- 받는 폴더를 여러 개 읽습니다. 설정 `extra_inboxes`(설정 화면의 ‘추가 받는 폴더’, 최대 8개)에 폴더를 더하면 기존 받는 폴더와 같은 규칙(안정 대기, 격리 복사, 같은 내용은 작업 하나, 기준 시각·포함 목록)으로 읽습니다. 갤럭시 통역 앱의 `Recordings/Interpreter`를 두 번째 Syncthing 폴더로 받아 처리하는 용도입니다(통화 녹음은 계속 보내지 않습니다). 아직 없는 폴더는 건너뛰고 상태에 표시합니다. 기존 녹음 화면은 어느 폴더의 파일인지 보이고, 폴더별로 요청합니다. 처음 열 때 DB의 `files` 표가 폴더별 구분으로 바뀌며 기존 행은 기존 받는 폴더 것으로 남습니다.
+- Codex 새 버전 자동 확인: 시험이 오직 MCP 목록 조회 하나 때문에 실패하면(MCP 서버가 없는 0.170에서 새 프롬프트 12번 중 1번 실측) 같은 버전·파일로 바로 한 번만 다시 시험합니다. 두 번째에도 MCP면 지금처럼 영구 실패이고, 카나리·명령·파일·웹 등 다른 보안 실패는 다시 시험하지 않습니다. 실제 요약 호출의 MCP 거부는 그대로입니다.
+
+### English
+
+- Several receiving folders. Add folders to the `extra_inboxes` setting (Settings → Extra inboxes, up to 8) and they are read by the same rules as the inbox (settle time, quarantine copy, one job per content, cutoff and include list). Meant for the Galaxy interpreter app's `Recordings/Interpreter` as a second Syncthing folder (call recordings are still not sent). A folder that does not exist yet is skipped and shown in the status. The Older recordings screen shows which folder a file is in and requests per folder. On first start the database `files` table becomes per folder; existing rows stay with the primary inbox.
+- Automatic Codex check: when the test fails only because of an MCP listing call (seen in 1 of 12 runs with the new prompt on 0.170, which has no MCP server), it is run once more at once for the same version and file. A second MCP result is a permanent failure as before, and any other security failure (canary, command, file, web, …) is not retried. The MCP refusal on a real summary call is unchanged.
+
 ## 0.0.12
 
 ### 한국어

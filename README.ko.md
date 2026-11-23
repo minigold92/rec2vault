@@ -165,6 +165,11 @@ deploy/setup.sh open              # 브라우저로 설정 화면 열기
 2. 폰에서 `Recordings/Voice Recorder`를 **보내기 전용**으로 공유하고, Syncthing-Fork를 배터리 최적화
    예외로 둡니다.
 3. Mac에서 공유를 `~/QuietClerk/inbox`에 **받기 전용**으로 수락합니다.
+4. 갤럭시 통역 앱 녹음도 처리하려면(선택): 폰에서 `Recordings/Interpreter`를 두 번째 **보내기 전용** 폴더로
+   공유하고, Mac에서는 그 공유를 별도 폴더(예: `~/QuietClerk/inbox-interpreter`)에 **받기 전용**으로 수락한 뒤
+   **설정 → 추가 받는 폴더**(`extra_inboxes`)에 그 경로를 더하세요. 통역 녹음(`통역_YYMMDD_HHMMSS.m4a`)은 첫 폴더와
+   같은 규칙으로 읽고, 같은 녹음이 두 폴더에 있어도 회의록은 하나만 만듭니다. 통화 녹음(`Recordings/Call`)은
+   계속 보내지 않습니다.
 
 설치 시각 이전 녹음은 건너뜁니다. 예전 녹음은 **기존 녹음** 화면에서 골라 넣으세요. Syncthing-Fork
 2.1.3에서 폴더를 고른 뒤 저장 버튼이 회색이면 폰을 한 번 돌려 보세요.
@@ -307,6 +312,7 @@ S2 역할에 "서버 담당자 자기소개도 혼재"가 붙은 것은 화자 �
 | `output` | `~/QuietClerk/notes` | 회의록 폴더. Obsidian 볼트 안을 권장 |
 | `since` | 설치 시각 | 이 시각 이전 녹음은 건너뜀 |
 | `min_duration_sec` | `300` | 이보다 짧은 녹음은 건너뜀 |
+| `extra_inboxes` | `[]` | inbox처럼 읽는 받는 폴더 더하기(최대 8개). 통역 앱이면 `["~/QuietClerk/inbox-interpreter"]`. 절대 경로, inbox·데이터 폴더 자체·엔진 폴더(`archive`, `work` 등)·회의록 폴더는 안 됨 |
 | `language.mode` | `auto` | `auto`, `ko`, `en` |
 | `notes.output_language` | `same` | 회의 언어로 쓰기, 또는 항상 `ko`/`en` |
 | `providers.order` | — | 시도할 엔진 순서(`codex`, `claude`, `ollama`, `omp`) |
@@ -321,8 +327,8 @@ S2 역할에 "서버 담당자 자기소개도 혼재"가 붙은 것은 화자 �
 | `memo.enabled` | `false` | `min_duration_sec`보다 짧은 녹음(최소 `memo.min_sec`, 기본 10초)을 음성 메모로 처리 |
 | `daily_note.path` | — | 회의 링크를 남길 데일리 노트. 예: `~/Vault/Daily/{date}.md`(같은 볼트 안) |
 
-환경 변수 `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY`, `QC_PORT`가 파일보다
-우선합니다.
+환경 변수 `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY`, `QC_PORT`, `QC_EXTRA_INBOXES`(경로를 `:`로
+구분)가 파일보다 우선합니다.
 
 ## 한계
 

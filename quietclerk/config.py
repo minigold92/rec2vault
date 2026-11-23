@@ -24,8 +24,11 @@ from pathlib import Path
 ENV_KEYS = {'root': 'QC_ROOT', 'inbox': 'QC_INBOX', 'output': 'QC_OUTPUT',
             'since': 'QC_SINCE', 'min_duration_sec': 'QC_MIN_DURATION_SEC',
             'stable_sec': 'QC_STABLE_SEC', 'language.mode': 'QC_LANGUAGE',
-            'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT'}
-DEFAULTS = {'root': str(Path.home() / 'QuietClerk'), 'inbox': None, 'output': None,
+            'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT',
+            'extra_inboxes': 'QC_EXTRA_INBOXES'}
+MAX_EXTRA_INBOXES = 8
+LIST_SEPARATOR = os.pathsep   # QC_EXTRA_INBOXES is a PATH-style list; a path with ':' in it can only be set in settings.toml
+DEFAULTS = {'root': str(Path.home() / 'QuietClerk'), 'inbox': None, 'output': None, 'extra_inboxes': [],
             'since': '', 'min_duration_sec': 300, 'stable_sec': 60,
             'language.mode': 'auto', 'language.default': 'en',
             'notes.output_language': 'same', 'providers.order': [],
@@ -69,6 +72,66 @@ def _vocabulary_text(key, value):
     return value.strip()
 
 
+def _extra_inboxes(key, value):
+    """Absolute, expanded, lexically normalized (never resolved, like `inbox`); the checks against the other
+    folders need the whole configuration and run in load()."""
+    if not isinstance(value, list):
+        raise SettingsError(key, 'expected a list of paths')
+    if len(value) > MAX_EXTRA_INBOXES:
+        raise SettingsError(key, f'expected at most {MAX_EXTRA_INBOXES} folders')
+    result = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise SettingsError(key, 'expected nonempty paths')
+        path = Path(item.strip()).expanduser()
+        if not path.is_absolute():
+            raise SettingsError(key, f'expected absolute paths (or ~/...): {item}')
+        if '..' in path.parts:
+            raise SettingsError(key, f'expected no .. in paths: {item}')
+        if str(path) in result:
+            raise SettingsError(key, f'duplicate folder: {path}')
+        result.append(str(path))
+    return result
+
+
+# What the engine keeps directly under `root`: a receiving folder must not be, or be inside, one of these (or a hidden
+# folder there, like .venvs and .ops), nor `root` itself. A sibling such as <root>/inbox-interpreter is fine: the
+# primary inbox is <root>/inbox by default and installations that adopted ~/rec keep every receiving folder there.
+ENGINE_DIRS = ('archive', 'work', 'quarantine', 'logs', 'note-backups', 'app', 'src')
+
+
+def _inside(path, base):
+    """Whether `path` is `base` or below it, by the written path and by where each really points."""
+    path, base = Path(path), Path(base)
+    return path.is_relative_to(base) or path.resolve().is_relative_to(base.resolve())
+
+
+def _engine_owned(path, root):
+    """Whether `path` is `root`, or inside an engine folder (or hidden folder) directly under it (written path and real path)."""
+    for candidate, base in ((Path(path), Path(root)), (Path(path).resolve(), Path(root).resolve())):
+        if candidate.is_relative_to(base):
+            parts = candidate.relative_to(base).parts
+            if not parts or parts[0] in ENGINE_DIRS or parts[0].startswith('.'):
+                return True
+    return False
+
+
+def _check_extra_inboxes(values):
+    inbox = Path(values['inbox'])
+    seen = []
+    for item in values['extra_inboxes']:
+        path = Path(item)
+        if path == inbox or path.resolve() == inbox.resolve():
+            raise SettingsError('extra_inboxes', f'same folder as the primary inbox: {item}')
+        if _engine_owned(path, values['root']):
+            raise SettingsError('extra_inboxes', f'a receiving folder must not be the data folder or one of its engine folders: {item}')
+        if _inside(path, values['output']):
+            raise SettingsError('extra_inboxes', f'a receiving folder must not be inside the notes folder: {item}')
+        if any(path.resolve() == other.resolve() for other in seen):
+            raise SettingsError('extra_inboxes', f'duplicate folder: {item}')
+        seen.append(path)
+
+
 def _validate(key, value):
     if (key.startswith('providers.agy') or
             (key in ('providers.order', 'providers.allow_unverified', 'providers.consent') and
@@ -77,6 +140,8 @@ def _validate(key, value):
     if key not in DEFAULTS:
         raise SettingsError(key, 'unknown setting')
     default = DEFAULTS[key]
+    if key == 'extra_inboxes':
+        return _extra_inboxes(key, value)
     if key in ('root', 'inbox', 'output'):
         if not isinstance(value, str) or not value:
             raise SettingsError(key, 'expected a nonempty path')
@@ -228,7 +293,9 @@ def load(path=None, environ=None):
         if name not in env:
             continue
         value = env[name]
-        if type(DEFAULTS[key]) is int:
+        if key == 'extra_inboxes':
+            value = [part for part in value.split(LIST_SEPARATOR) if part]
+        elif type(DEFAULTS[key]) is int:
             try:
                 value = int(value)
             except ValueError as exc:
@@ -242,6 +309,7 @@ def load(path=None, environ=None):
     for key, suffix in (('inbox', 'inbox'), ('output', 'notes')):
         if values[key] is None:
             values[key] = str(Path(values['root']) / suffix)
+    _check_extra_inboxes(values)
     if values['daily_note.path']:
         # Only the template here: a vault that is briefly unavailable (sync, unmounted
         # disk) must not stop the service. Saving checks the vault (check_daily_note).
@@ -255,6 +323,13 @@ def load(path=None, environ=None):
         if key not in file_values and key not in locked:
             values[key] = value
     return Settings(values, copy.deepcopy(file_values), frozenset(locked), path)
+
+
+def env_text(value):
+    """A setting value as its QC_* environment variable spells it (lists are PATH-style)."""
+    if isinstance(value, list):
+        return LIST_SEPARATOR.join(map(str, value))
+    return str(value).lower() if type(value) is bool else str(value)
 
 
 def memo_mode(settings, duration):

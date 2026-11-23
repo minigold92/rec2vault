@@ -56,7 +56,9 @@ convert:done:0s diarize:done:2s detect_language:done:4s transcribe:done:9s secon
 
 폰 녹음기가 `음성 261110_100000.m4a`(`YYMMDD_HHMMSS`, 녹음 시작 시각)를 저장하면 Syncthing이 Mac의 `inbox/` 폴더로
 복사합니다. 파이프라인은 inbox를 **읽기만 합니다.** 파일을 밖으로 복사해 갈 뿐 옮기거나 이름을 바꾸거나 지우지
-않습니다.
+않습니다. 갤럭시 통역 앱은 `Recordings/Interpreter`에 `통역_YYMMDD_HHMMSS.m4a`로 저장합니다. 이 폴더를 두 번째
+Syncthing 폴더로 공유하고 Mac 경로를 `extra_inboxes` 설정에 적으면 `inbox/`와 똑같이 읽습니다(아래 검사도
+같고, 같은 녹음이 두 폴더에 있어도 작업은 하나). 통화 녹음은 보내지 않습니다.
 
 ## 2. Intake: 끝난 파일인가, 새 파일인가, 열어도 안전한가
 
@@ -66,7 +68,7 @@ Mac에서는 백그라운드 서비스(launchd `KeepAlive`, `quietclerk.cli serv
 
 | 검사 | 이유 | 이 데모 |
 |---|---|---|
-| 최상위 `.m4a`만. 숨김 파일·`통화*`(통화 녹음)·심볼릭 링크 제외 | 음성 녹음만 처리하고, 링크를 따라 inbox 밖으로 나가지 않음 | 통과 |
+| 최상위 `.m4a`만. 숨김 파일·`통화*`(통화 녹음)·심볼릭 링크 제외 | 음성 녹음만 처리하고, 링크를 따라 받는 폴더 밖으로 나가지 않음 | 통과 |
 | 크기·수정 시각이 60초간 그대로 | Syncthing이 아직 쓰는 중일 수 있음 | 데모는 `stable_sec = 0` |
 | `O_NOFOLLOW`로 격리 폴더에 복사, 1 GiB 이하, SHA-256 계산 | 복사 중 바뀐 파일은 무시하고 다시 시도. 해시 하나는 작업 하나(이름이 달라도) | 새 파일 |
 | 헤더를 먼저 검사한 뒤 `ffprobe`. AAC 스트림 하나, 5분 ≤ 길이 ≤ 3시간 | 깨진 파일, 호주머니 녹음, 폭주 파일 건너뜀 | 데모는 `min_duration_sec = 60`, 157초 통과 |

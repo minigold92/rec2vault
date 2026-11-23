@@ -466,7 +466,7 @@ def test_integration_runtime_error_is_503_not_500(api, monkeypatch):
     client, runtime, base = api
     login(client, runtime, base)
 
-    def refuse(names, settings=None):
+    def refuse(names, settings=None, folder=None):
         raise RuntimeError('no Syncthing folder at the inbox')
     monkeypatch.setattr(backfill, 'request', refuse)
     response = client.post('/api/backlog/request', json={'names': ['a.m4a']})

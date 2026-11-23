@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .. import store, tool_checks
 from . import (Busy, NotInstalled, ProviderError, Timeout, execution_slot, registry, release_resolved_blocks)
-from .events import is_tool_reason
+from .events import MCP_REASON, is_tool_reason, only_mcp
 
 DECOY_TIMEOUT = 120
 # No "MCP resources" here on purpose: asking for them made every 0.170 run call the built-in MCP listing tools
@@ -45,6 +45,7 @@ class ToolCheck:
     transient: bool = False
     path: str = ''
     sha256: str = ''
+    mcp_only: bool = False   # failed only because of `mcp_tool_call` events: the one case that is tested once more
 
 
 def _normal(text):
@@ -122,7 +123,10 @@ def run(provider, command, judge, *, timeout=None, clock=time.time):
         reason = judged
     elif not text.strip():
         reason, transient = 'no_output', True
-    return ToolCheck(provider.name, version, reason is None, reason or 'ok', kinds, clock(), transient, path, sha256)
+    # MCP alone: no canary, no changed file, no malformed output and no other tool or unknown kind in the stream.
+    mcp_only = reason == MCP_REASON and not changed and not invalid and only_mcp(kinds)
+    return ToolCheck(provider.name, version, reason is None, reason or 'ok', kinds, clock(), transient, path, sha256,
+                     mcp_only)
 
 
 def _snapshot_of(settings):
@@ -151,6 +155,13 @@ def verify(settings, name, *, source, notify=None, available=None, registry_fn=r
         try:
             with execution_slot(provider, blocking=False):
                 check = provider.tool_check(clock)
+                if check.mcp_only:
+                    # Codex 0.170 sometimes lists MCP resources on its own although it has no MCP server (1 of 12 runs
+                    # with the current prompt). Once more, at once, same version, path and file; whatever the second
+                    # run finds is the verdict (a second MCP-only failure stays permanent).
+                    again = provider.tool_check(clock)
+                    if (again.version, again.path, again.sha256) == (check.version, check.path, check.sha256):
+                        check = again
         except (Busy, NotInstalled):
             return None
         with closing(store.connect(Path(settings['root']) / 'state.sqlite3')) as con:

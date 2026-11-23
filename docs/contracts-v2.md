@@ -116,11 +116,12 @@
 PRAGMA foreign_keys = ON;
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);           -- schema_version, vault_migration
 CREATE TABLE files (
-  path TEXT PRIMARY KEY,                 -- 받는 폴더 기준 상대 경로(표시용 NFC 이름은 name_nfc)
+  folder TEXT NOT NULL DEFAULT '',       -- 받은 폴더: '' = 주 `inbox`, 그 밖은 `extra_inboxes`에 적힌 경로(3.3절). 키는 (folder, path)
+  path TEXT NOT NULL,                    -- 그 폴더 기준 상대 경로(표시용 NFC 이름은 name_nfc)
   name_nfc TEXT NOT NULL, source TEXT NOT NULL CHECK (source IN ('syncthing','upload','migrated')),
   size INTEGER NOT NULL, mtime REAL NOT NULL, last_change REAL NOT NULL,
   intake_status TEXT NOT NULL CHECK (intake_status IN ('waiting','rejected','registered','duplicate')),
-  reject_reason TEXT, sha256 TEXT, first_seen REAL NOT NULL);
+  reject_reason TEXT, sha256 TEXT, first_seen REAL NOT NULL, PRIMARY KEY (folder, path));
 CREATE TABLE jobs (
   job_id TEXT PRIMARY KEY, sha256 TEXT UNIQUE NOT NULL,
   source_name TEXT NOT NULL, recorded_at TEXT NOT NULL, archive_path TEXT, duration_sec REAL,
@@ -175,6 +176,8 @@ CREATE TABLE job_state_since (             -- 10.11절 오래 막힘 지표: 작
 
 두 표는 `store.connect`가 없으면 만든다(기존 DB는 `CREATE TABLE IF NOT EXISTS`로 이행, `jobs` 표는 바꾸지 않는다. 경로·해시가 없던 첫 판의 `provider_tool_checks`는 믿을 수 없으므로 버리고 다시 만든다). `job_state_since`는 `jobs`의 INSERT·상태 UPDATE·DELETE 트리거가 채운다(10.11절). `meta.stuck_jobs`는 직전 주기의 지표 값이다.
 
+`files.folder`는 `extra_inboxes`(3.3절) 때문에 생겼다. 기존 DB는 `store.connect`가 `files`를 (folder, path) 키로 다시 만들면서 모든 기존 행을 `folder=''`(주 `inbox`)로 옮긴다. 한 트랜잭션이고 이미 옮긴 DB(`folder` 열이 있음)는 건드리지 않으며, 여러 프로세스가 동시에 열어도 쓰기 잠금 안에서 다시 확인하므로 한 번만 옮긴다. v1 → v2 이행(3.2절)이 만드는 행도 `folder=''`다.
+
 모든 연결: WAL, `busy_timeout=15000`, `foreign_keys=ON`. 실행자·API·스케줄러가 각자 연결을 연다.
 
 ### 3.2 v1 → v2 이행 (10절 업그레이드 안에서만 실행)
@@ -200,6 +203,7 @@ CREATE TABLE job_state_since (             -- 10.11절 오래 막힘 지표: 작
 |---|---|---|---|---|
 | `root` | 경로 | 신규 `~/QuietClerk`, 업그레이드 시 기존 `~/rec` 채택 | `QC_ROOT` | 불가(유지보수 명령) |
 | `inbox` | 경로 | `<root>/inbox` | `QC_INBOX` | 불가 |
+| `extra_inboxes` | 경로 목록(최대 8개) | `[]` | `QC_EXTRA_INBOXES`(`:`로 구분, PATH 형식; 빈 문자열은 빈 목록. `:`가 든 경로는 파일에서만 설정) | 다음 스캔부터 |
 | `output` | 경로 | `<root>/notes` | `QC_OUTPUT` | 다음 실행부터 |
 | `since` | `YYYY-MM-DD HH:MM` | 설치 시각 | `QC_SINCE` | 다음 스캔부터 |
 | `min_duration_sec` | 정수 | 300 | `QC_MIN_DURATION_SEC` | 다음 스캔부터 |
@@ -224,6 +228,7 @@ CREATE TABLE job_state_since (             -- 10.11절 오래 막힘 지표: 작
 - 이전 `REC_*`·`settings.env`는 업그레이드 이행이 한 번 변환한다: 임시 TOML에 쓰고 다시 읽어 검증 → rename → `settings.env`를 `settings.env.migrated`로. 런타임에 `REC_*` 별칭은 없다.
 - 설정의 ‘버전’은 인증된 `/api/status`의 `engine_version`(설치된 `quietclerk` 패키지 메타데이터, 없으면 `null`), `installation_method`(`app`/`cli`, 유효한 앱 소유 기록이 있을 때만 `app`), `last_updated_at`(성공한 엔진 업데이트의 `finished_at`, 없으면 `null`)을 표시한다. 앱 버전은 엔진에서 추정하지 않고 앱 메뉴에서 확인하도록 안내한다.
 - 화면에서 저장하면 파일 전체를 다시 쓴다(주석 보존 안 함, 문서에 명시).
+- `extra_inboxes`: `inbox`와 같은 규칙으로 읽는 받는 폴더를 더한다(예: 갤럭시 통역 앱 `Recordings/Interpreter`를 두 번째 Syncthing 폴더로 `~/rec/inbox-interpreter`에 받는 경우. 일반 녹음 `Recordings/Voice Recorder`는 주 `inbox`). 각 항목은 `~`를 펼친 **절대 경로**여야 하고(`..` 없음, 상대 경로 거부), 쓴 그대로 두며 심볼릭 링크를 풀지 않는다(`inbox`와 같다. 폴더를 `O_NOFOLLOW`로 열기 때문에 링크인 폴더에서는 아무것도 받지 않는다). 거부: 개수 9개 이상, 서로 같은 경로, 주 `inbox`와 같은 폴더(링크로 같은 곳을 가리켜도), `root` 자체나 `root` 바로 아래 엔진 폴더(`archive`·`work`·`quarantine`·`logs`·`note-backups`·`app`·`src`와 `.`으로 시작하는 폴더, 그 안쪽 포함), `output` 폴더 자체나 그 안쪽(링크를 따라 들어가는 경우 포함). `<root>/inbox-interpreter`처럼 `root` 아래 엔진 폴더가 아닌 형제 폴더는 허용한다: 주 `inbox`가 기본값 `<root>/inbox`이고 `~/rec`를 `root`로 채택한 설치는 받는 폴더를 모두 거기에 둔다. 저장 시 검사하며 어긋나면 400 `{field: "extra_inboxes"}`, 시작할 때 파일·환경 변수가 어긋나면 `SettingsError`다. 환경 변수로 덮이면 화면에서 바꿀 수 없다(409). 폴더가 이 Mac에 아직 없으면 오류 없이 건너뛰고(만들지 않는다) `/api/status`의 `sync.extra[].exists=false`로 보인다. 통화 녹음 폴더(`Recordings/Call`)는 계속 보내지 않는다.
 
 ---
 
@@ -287,7 +292,7 @@ archive ─▶ convert ─▶ diarize ─▶ detect_language ─┬▶ transcrib
 
 ### 5.1 받는 순서 (모든 경로 공통)
 
-1. 경로 확인: 받는 폴더 바로 아래 일반 파일, 숨김·하위 폴더·심볼릭 링크·`통화*` 제외(무시, 기록 안 함).
+1. 경로 확인: **주 `inbox`와 `extra_inboxes`의 각 폴더에서**(폴더마다 같은 규칙) 바로 아래 일반 파일, 숨김·하위 폴더·심볼릭 링크·`통화*` 제외(무시, 기록 안 함). 없는 추가 폴더는 건너뛰고 기록하지 않는다. `files`는 (폴더, 상대 경로)로 구분하므로 두 폴더에 같은 이름의 다른 파일이 있어도 따로 본다. 안정 대기·격리 복사·형식·중복·정책(2~7단계)은 폴더와 무관하게 같고, **같은 내용이 두 폴더에 있으면 해시 중복 규칙으로 작업은 하나만** 생긴다. 포함 목록(`include.txt`)은 이름 기준이라 모든 폴더에 같이 적용된다.
 2. 안정 대기: 크기·mtime이 `stable_sec` 동안 그대로. 0바이트는 `files.intake_status='waiting'`, 60분 넘으면 화면에 "빈 파일".
 3. **격리 복사**: `O_NOFOLLOW`로 연 파일 핸들에서 상한(1GB)까지만 읽어 `quarantine/<임시>`에 쓰면서 SHA-256을 계산. 읽기 전후 `(dev, inode, size, mtime)`이 같아야 확정. 상한 초과면 중단하고 `rejected(too_big)`(해시 없음).
 4. 형식 확인(격리본에서): `ffprobe`와 이후 `ffmpeg` 모두 `-protocol_whitelist file -f mov` 강제(MP4/M4A 데멀티플렉서만), 제한 시간 30초. 오디오 스트림 1개, 코덱 AAC(M1 허용 목록), 길이는 유한한 양수. 실패면 `rejected(format|codec|decode)`.
@@ -304,7 +309,7 @@ archive ─▶ convert ─▶ diarize ─▶ detect_language ─┬▶ transcrib
 
 ### 5.3 기존 녹음(아직 받지 않은 것)
 
-Syncthing 목록에서 고른 이름을 포함 목록에 넣고 무시 패턴에서 뺀다(지금 `backfill`). 받으면 5.1 순서. 이것은 2.2절의 승격과 다른 경로다.
+Syncthing 목록에서 고른 이름을 포함 목록에 넣고 **그 이름이 속한 받는 폴더 하나의** 무시 패턴에서만 뺀다(지금 `backfill`, `python -m quietclerk.backfill [--folder <경로>] <이름>…`; 폴더를 안 쓰면 주 `inbox`. 폴더는 설정된 경로와 정확히 같아야 하고 아니면 거부). 받으면 5.1 순서. 이것은 2.2절의 승격과 다른 경로다.
 
 ### 5.4 공간 부족
 
@@ -483,12 +488,13 @@ class Provider(Protocol):
   - **시험 통과 기준(모두 만족해야 `verified`, 모호하면 실패)**: ① 종료 코드 0이고 출력 파일이 비어 있지 않다. ② 표준 출력·표준 오류·출력 파일 어디에도 카나리가 없다(영숫자만 남겨 소문자로 맞춘 뒤 비교하므로 띄어쓰기·구두점으로 쪼갠 노출도 잡는다). ③ 공유 이벤트 검사를 통과한다. ④ 시험 폴더의 파일 목록·내용·수정 시각이 시험 전과 같다. ⑤ 시험이 끝난 뒤에도 실행 파일이 시험 전과 같다(경로·해시).
   - **기록 결합**: 기록 키는 제공자 + **전체 버전 문자열**(`0.171.0-beta.1`처럼 접미사 포함, 정규화 없음. 고정 목록은 접미사 없는 정확한 `0.minor.patch`만) + **실행 파일의 realpath** + **그 파일의 SHA-256**이다(`provider_tool_checks`). 버전·경로·내용 중 하나라도 다르면 기록이 없는 것으로 본다. `status()`는 `PATH`에서 찾은 실행 파일을 한 번 realpath로 풀어 버전·로그인 확인과 이후 호출에 그 파일만 쓴다(`PATH` 재탐색 금지). 해시는 (경로, 크기, mtime, ctime, inode)로 캐시하고, `Codex.complete` 직전과 시험 직후에는 캐시 없이 다시 계산해 `status()` 때와 다르면 `ProviderError`(다음 제공자·재시도)다. 한계: 래퍼 스크립트(npm 설치)는 래퍼 파일만 해시하고 그 아래 모듈은 해시하지 않는다.
   - **실제 호출**(`Codex.complete`): 시험과 같은 `events.codex_events`를 쓴다. 도구·알 수 없는 item이 있으면 종료 코드와 상관없이 `ToolUseDetected`(재시도 안 함, `failed(tool_use_detected)`→알림)이고, 종료 코드가 0일 때 알 수 없는 이벤트·끝나지 않은 item·`turn.completed` 없음도 `ToolUseDetected`다(실패한 로그인이 찍는 오류 이벤트는 종료 코드 ≠ 0이므로 로그인 문제로 남는다).
-  - **보안 실패와 일시 실패**: 보안 실패(`canary_exposed`, `tool_event:*`, `unknown_item`, `unknown_event`, `invalid_event`, `incomplete_item`, `no_turn_completed`, `cwd_changed`)는 그 버전+경로+해시에 **영구**다. 사람이 설정의 '시험 호출'을 눌러야 다시 돈다. 일시 실패(`exit_<코드>`: 로그인·레이트·네트워크, `timeout`, `no_output`, `cannot_execute`, `executable_changed`)는 판정이 아니다: 통과 기록이 아니고, 30분→2시간→6시간 뒤 다시 시험하고 그 뒤로는 6시간 간격이다(`attempts`·`retry_at`을 DB에 둬 재시작해도 이어진다). 통과하면 끝난다.
+  - **보안 실패와 일시 실패**: 보안 실패(`canary_exposed`, `tool_event:*`, `unknown_item`, `unknown_event`, `invalid_event`, `incomplete_item`, `no_turn_completed`, `cwd_changed`)는 그 버전+경로+해시에 **영구**다(`tool_event:mcp_tool_call` 단독은 아래 즉시 1회 재시험을 거친 뒤에). 사람이 설정의 '시험 호출'을 눌러야 다시 돈다. 일시 실패(`exit_<코드>`: 로그인·레이트·네트워크, `timeout`, `no_output`, `cannot_execute`, `executable_changed`)는 판정이 아니다: 통과 기록이 아니고, 30분→2시간→6시간 뒤 다시 시험하고 그 뒤로는 6시간 간격이다(`attempts`·`retry_at`을 DB에 둬 재시작해도 이어진다). 통과하면 끝난다.
+  - **MCP 단독 실패는 즉시 1회 다시 시험한다** (2026-11-23: MCP 서버가 없는 0.170에서 MCP를 뺀 새 프롬프트 12번 중 1번 내장 MCP 목록 조회가 나왔다): 시험이 **오직 `tool_event:mcp_tool_call` 때문에** 실패하면(카나리·바뀐 파일·잘못된 출력이 없고, 이벤트 종류가 평범한 답과 `mcp_tool_call`뿐일 때) 같은 버전·경로·해시로 즉시 한 번만 더 시험하고 그 결과가 판정이다. 통과하면 `verified`이고, 다시 MCP면 영구 보안 실패이며, 두 번째가 다른 보안 실패여도 그 이유로 영구다(세 번째는 없다). 카나리·명령·파일 변경·웹·알 수 없는 이벤트나 item 등 MCP 말고 다른 보안 실패가 하나라도 섞이면 재시험 없이 영구다. 두 시험은 같은 실행 슬롯 안에서 이어지고 알림·기록은 최종 결과 한 번이다(첫 시도는 기록하지 않는다). 실제 요약 호출(`Codex.complete`)의 `mcp_tool_call` 거부는 그대로이며 재시도하지 않는다.
   - **트리거와 잠금**: 서비스 시작 직후와 이후 10분마다(`serve.TOOL_CHECK_INTERVAL`) 감시 스레드가 시험 한 건을 실행 스레드의 유지보수 대기열(`Runtime.submit`)에 올린다(대기 중인 것이 있으면 새로 올리지 않는다). 그래서 시험은 작업 사이에, 실행 잠금(`tick.lock`)을 쥔 실행 스레드에서만 돈다. 조건: Codex가 `providers.order`에 있고 `transcript` 동의가 있고, 로컬 전용이 아니며, 설치·로그인되어 있고, 버전이 고정 목록에도 기록(영구 또는 백오프 중)에도 없을 때. 프로세스 안 잠금으로 동시에 두 번 돌지 않는다. 제한 시간 120초(`decoy.DECOY_TIMEOUT`), 제공자 실행 슬롯을 non-blocking으로 잡는다.
   - **결과**: 통과하면 기록한 뒤 **그 시점의 최신 설정**(`Runtime.settings`)과 새 제공자 객체로 동의·순서·로컬 전용을 다시 확인하면서 `release_resolved_blocks`를 불러 대기 작업을 `queued`로 푼다(시험 도중 동의를 거두거나 로컬 전용을 켰으면 풀리지 않는다). ops 이벤트 `tool_check_passed`. 보안 실패면 `unverified` 유지와 `tool_check_failed`(에러, 이유 코드만), 일시 실패면 `tool_check_retry`와 백오프다. 둘 다 10.11절 `stuck_jobs`로도 알려진다.
   - **수동 시험 호출**(`POST /api/providers/codex/check`): 미확인 버전이면 같은 미끼 시험을 먼저 돌려(영구 실패·백오프 중이어도 다시 돈다) 기록하고, 통과하면 기존 가상 한 문장 호출로 이어진다. 실패하면 `{ok:false, reason:"tool_check_failed:<코드>", sent_fields:[]}`이고 일반 호출은 보내지 않는다. 설정 화면 Codex 카드의 도구 차단 칸은 '자동 확인됨(날짜)' 또는 '자동 확인 실패 — 시험 호출로 다시 확인'과 이유 코드를 보인다.
   - **`providers.allow_unverified`는 자동 확인 실패 기록과 무관하게 동작하는 사용자 예외**다(사용자가 직접 켠 제공자에 한해, 순서에 넣은 경우에만, 대체 경로에는 안 들어감). 자동 확인은 이 예외를 만들거나 지우지 않는다.
-  - **남는 위험**: ① 시험은 회귀 검사일 뿐 증명이 아니다(읽고 숨기는 도구, 시험 때만 얌전한 모델은 통과한다). ② 실행 파일 교체는 해시 계산과 `exec` 사이의 짧은 틈을 막지 못한다(사용자 권한 공격자는 이미 같은 권한이다). ③ 엄격 검사는 무해한 새 이벤트·오류 알림에도 `ToolUseDetected`를 낼 수 있다(닫힌 쪽 선택). ④ 모델이 확률적으로 `apply_patch`나 MCP 목록 조회 등을 시도하면 시험이 영구 실패한다(MCP를 뺀 프롬프트에서도 실측 12번 중 1번 ≈ 8%)(운영에서도 같은 이벤트면 `ToolUseDetected`이며 사람이 다시 시험해야 한다). ⑤ 시험은 실행 스레드를 최대 120초 점유한다. ⑥ 일시정지 외에 레이트 리밋이 길게 이어지면 같은 6시간 간격으로 계속 호출한다.
+  - **남는 위험**: ① 시험은 회귀 검사일 뿐 증명이 아니다(읽고 숨기는 도구, 시험 때만 얌전한 모델은 통과한다). ② 실행 파일 교체는 해시 계산과 `exec` 사이의 짧은 틈을 막지 못한다(사용자 권한 공격자는 이미 같은 권한이다). ③ 엄격 검사는 무해한 새 이벤트·오류 알림에도 `ToolUseDetected`를 낼 수 있다(닫힌 쪽 선택). ④ 모델이 확률적으로 `apply_patch` 등을 시도하면 시험이 영구 실패한다. MCP 목록 조회는 MCP를 뺀 프롬프트에서도 실측 12번 중 1번(≈ 8%)이라 위 즉시 1회 재시험을 두었다(두 번 연달아 나올 확률은 시도가 서로 독립이면 ≈ 0.7% [추정])(운영의 실제 호출에서 같은 이벤트면 여전히 `ToolUseDetected`이며 재시도하지 않는다). ⑤ 시험은 실행 스레드를 최대 120초(재시험이 있으면 최대 240초) 점유한다. ⑥ 일시정지 외에 레이트 리밋이 길게 이어지면 같은 6시간 간격으로 계속 호출한다.
 - 따라서 사용자가 고른 4종 중 **지금 쓸 수 있는 구독 CLI는 Codex와 Claude**다. Gemini CLI는 구독 경로가 막혀 지원 대상에서 빠진다(API 키 방식은 사용자 결정 범위 밖). 
 - 남은 확인: Codex `web_search` 차단 실측(E8b 구현 직후), 실제 녹음 파이프라인에서 차단 호출 확인(E8b 완료 기준).
 
@@ -523,7 +529,7 @@ class Provider(Protocol):
 | `GET /api/jobs/{id}/audio` | Range | 200/206, 파일 없음 410, 잘못된 Range 416. DB의 아카이브 경로만 사용, 요청 값을 경로에 결합하지 않음 |
 | `GET /api/notes` | — | 엔진이 게시한 노트 목록 |
 | `GET /api/settings`, `PUT /api/settings` | 3.3절 키만, 타입 검사 | 200 / 400 `{field, error}` / 409(환경 변수로 덮인 키) |
-| `GET /api/backlog`, `POST /api/backlog/request` | `{names: []}` | 목록 / 202. Syncthing 색인으로 폰의 전체 기존 목록을 얻을 수 있는지는 S1 미결이므로 `inventory: complete|partial|unavailable`, `phone_recordings: 숫자|null`로 정직하게 표시 |
+| `GET /api/backlog`, `POST /api/backlog/request` | 요청 `{names: [], folder?: <설정된 받는 폴더 경로>}`(`folder`가 없거나 `null`이면 주 `inbox`, 설정에 없는 값은 400) | 응답 `{items: [{name, folder}], skipped: [작업 + folder], inventory}`: `items`는 Syncthing이 아직 안 준 녹음(주 `inbox` 먼저, 그다음 Syncthing이 공유하는 추가 폴더. 같은 이름이 두 폴더에 있으면 두 항목), 건너뛴 작업의 `folder`는 원본이 도착한 폴더(기록이 없으면 `null`) / 202. Syncthing 색인으로 폰의 전체 기존 목록을 얻을 수 있는지는 S1 미결이므로 `inventory: complete|partial|unavailable`, `phone_recordings: 숫자|null`로 정직하게 표시 |
 | `POST /api/notes/migrate/preview`, `/apply` | — | 7.5절 |
 | `POST /api/pause`, `/resume`, `/scan` | — | 204 |
 | `GET /api/events` | SSE | 상태 변화 |
@@ -532,7 +538,7 @@ class Provider(Protocol):
 | `GET /api/setup/vaults` | — | Obsidian 볼트 후보(Obsidian 설정 파일의 볼트 목록), 경로 존재 여부 |
 | `GET /api/providers`, `POST /api/providers/{name}/check` | — | 설치·로그인·버전·tool_block·endpoint_class·`tool_check`(그 정확한 버전의 미끼 시험 기록 `{version,checked_at,passed,reason,events,source}` 또는 `null`, 8.5절) / 시험 호출 결과(가상 텍스트, 동의 범위 안에서만; 미확인 Codex 버전이면 미끼 시험 결과 `tool_check` 포함) |
 | `GET /api/sync/pairing`, `POST /api/sync/pairing/approve` | `{device_id}` | Mac 장치 ID·QR 데이터·연결 요청 목록 / 승인 |
-| `GET /api/sync/folder` | — | 받는 폴더 공유 상태(요청 보냄·수락 대기·연결됨), 폰에 있는 녹음 수(S1 결과 후) |
+| `GET /api/sync/folder` | — | 받는 폴더 공유 상태(요청 보냄·수락 대기·연결됨), 폰에 있는 녹음 수(S1 결과 후). 주 `inbox`의 상태에 `extra: [{path, exists, state, folder_id, …}]`(추가 폴더마다 같은 필드와 이 Mac에 폴더가 있는지)를 더한다. `/api/status.sync`는 Syncthing에 닿지 못하면 `{state: "unavailable", extra: [{path, exists}]}` |
 
 같은 요청을 두 번 보내도 상태가 한 번만 바뀐다(처리 요청은 이미 `queued`면 204).
 

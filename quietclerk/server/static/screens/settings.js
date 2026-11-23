@@ -16,10 +16,12 @@ import {providerLabel} from '../lib/jobs.js';
 import {problemBanner} from '../lib/cards.js';
 import {setTitle, syncEngineControls, langSwitch} from '../lib/shell.js';
 import {updateCheckControl, updateVersions} from '../lib/update.js';
+import {inboxesEditor, serverWhy as inboxWhy} from './settings-inboxes.js';
 import {sectionsEditor, sectionsIssue, normalizeSections, instructionsIssue, dailyIssue, problemText as summaryProblem, serverReason, MEMO_RANGE, MAX_INSTRUCTIONS} from './settings-summary.js';
 
 const ENV = {root: 'QC_ROOT', inbox: 'QC_INBOX', output: 'QC_OUTPUT', since: 'QC_SINCE', min_duration_sec: 'QC_MIN_DURATION_SEC',
-  stable_sec: 'QC_STABLE_SEC', 'language.mode': 'QC_LANGUAGE', 'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT'};
+  stable_sec: 'QC_STABLE_SEC', 'language.mode': 'QC_LANGUAGE', 'providers.local_only': 'QC_LOCAL_ONLY', 'server.port': 'QC_PORT',
+  extra_inboxes: 'QC_EXTRA_INBOXES'};
 const APPLY = {
   rec: () => L('다음 녹음부터 적용', 'Applies from the next recording'),
   scan: () => L('다음 확인부터 적용', 'Applies from the next scan'),
@@ -35,6 +37,7 @@ const INSTRUCTIONS = 'summary.instructions';
 const MEMO_ON = 'memo.enabled';
 const MEMO_MIN = 'memo.min_sec';
 const DAILY = 'daily_note.path';
+const EXTRA = 'extra_inboxes';
 
 // ---- word list rules (contract §10.7): up to 200 entries of 1-40 characters. The engine counts characters (not UTF-16
 // units) and refuses every Unicode "other" character (control, zero-width, bidirectional, private use), while the save
@@ -256,6 +259,12 @@ export async function mount({content}) {
       h('input', {type: 'checkbox', role: 'switch', id, checked: on, disabled: locked, 'data-engine': locked ? null : '',
         on: {change: (event) => { setDraft(key, event.target.checked); text.textContent = event.target.checked ? L('켬', 'On') : L('끔', 'Off'); }}}), text)});
   }
+
+  // ---- extra receiving folders (contract §3.3): a list draft like any other key; the rules and the editor are in settings-inboxes.js.
+  // The folders the engine says are not on this Mac come from /api/status (sync.extra), so they are known for saved folders only.
+  const extraUi = inboxesEditor({id: 'f-extra', get: () => value(EXTRA), set: (next) => { setDraft(EXTRA, next); dropError('f-extra'); },
+    primary: () => effective('inbox'), locked: () => isLocked(EXTRA), sync: syncEngineControls,
+    missing: () => ((state.identity && state.identity.sync && state.identity.sync.extra) || []).filter((item) => item.exists === false).map((item) => item.path)});
 
   // ---- providers: the order list (enabling and consent live in setup step 4)
   const providersHost = h('div', {class: 'slot'});
@@ -697,6 +706,8 @@ export async function mount({content}) {
           control: h('div', {class: 'row'}, h('input', {class: 'input mid', id: 'f-root', value: String(effective('root')), disabled: true}), lockChip())}),
         field({id: 'f-inbox', key: 'inbox', label: L('받는 폴더', 'Inbox'), help: L('Syncthing이 녹음을 넣는 곳 · 엔진은 읽기만 해요', 'Where Syncthing drops recordings · read-only for the engine'), locked: true, extra: 'inbox',
           control: h('div', {class: 'row'}, h('input', {class: 'input mid', id: 'f-inbox', value: String(effective('inbox')), disabled: true}), lockChip())}),
+        field({id: 'f-extra', key: EXTRA, label: L('추가 받는 폴더', 'Extra inboxes'), help: L('예: 통역 앱 녹음을 받는 두 번째 Syncthing 폴더 · 최대 8개', 'e.g. a second Syncthing folder for interpreter recordings · up to 8'),
+          apply: 'scan', locked: isLocked(EXTRA), control: extraUi.el}),
         numberField('retention.wav_days', 'f-wav', L('변환한 음성 보관', 'Keep converted audio'), L('회의록을 쓰고 며칠 뒤 지울지', 'Days after the note is written'), 'clean', L('일', 'days')),
         retentionTable()),
       section('s-ui', L('화면과 연결', 'Screen & access'),
@@ -788,7 +799,7 @@ export async function mount({content}) {
         h('b', {class: 'ink', 'aria-live': 'polite'}, keys.length ? L(`바꾼 항목 ${keys.length}개`, `${keys.length} change${keys.length === 1 ? '' : 's'}`) : L('바꾼 항목이 없어요', 'No changes')),
         h('span', {class: 'small muted'}, L('처리 중인 녹음은 시작할 때의 설정으로 끝까지 가요.', 'A recording already in progress finishes with the settings it started with.')),
         h('span', {class: 'spacer'}),
-        btn({small: true, engine: true, disabled: !keys.length, label: L('되돌리기', 'Revert'), on: {click: () => { state.draft = {}; state.errors = {}; state.notice = null; fixRows = null; typed.add = ''; typed.said = null; render(); }}}),
+        btn({small: true, engine: true, disabled: !keys.length, label: L('되돌리기', 'Revert'), on: {click: () => { state.draft = {}; state.errors = {}; state.notice = null; fixRows = null; typed.add = ''; typed.said = null; extraUi.reset(); render(); }}}),
         btn({small: true, kind: 'primary', engine: true, disabled: !keys.length, label: L('저장', 'Save'), on: {click: save}})),
       h('p', {class: 'small muted'}, L('저장하면 settings.toml을 통째로 다시 써요. 파일에 직접 단 주석은 남지 않아요.', 'Saving rewrites settings.toml entirely; comments you added are not kept.'))));
     syncEngineControls(barHost);
@@ -836,13 +847,14 @@ export async function mount({content}) {
       state.server = await put('/api/settings', body);
       state.draft = {};
       fixRows = null;
+      await loadIdentity();   // which extra inboxes exist on this Mac may have changed with the list
       state.notice = banner('info', '✓', [h('b', null, L('저장했어요.', 'Saved.'))]);
       announce(L('저장했어요.', 'Saved.'));
     } catch (error) {
       const field = error.body && error.body.field;
       if ((error.status === 400 || error.status === 409) && field) {
         state.errors[field] = error.status === 409 ? L('환경 변수로 정해져 있어 바꿀 수 없어요.', 'Fixed by an environment variable; it can\'t be changed.')
-          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : isVocabulary(field) ? serverWhy(String(error.body.error)) : serverReason(field, String(error.body.error));
+          : field === 'since' ? L('형식이 맞지 않아요. 예: 2026-11-09 23:00', 'Wrong format. Example: 2026-11-09 23:00') : isVocabulary(field) ? serverWhy(String(error.body.error)) : field === EXTRA ? inboxWhy(String(error.body.error)) : serverReason(field, String(error.body.error));
         state.notice = banner('err', '!', [h('b', null, L('저장하지 못했어요.', 'Not saved.')), ' ',
           L('빨간 항목 1개를 고쳐 주세요. 나머지는 아직 바뀌지 않았어요.', 'Fix the 1 item in red. Nothing else has changed yet.'), ' ', code(`${error.status} {field: ${field}}`)]);
       } else {
@@ -868,6 +880,7 @@ export async function mount({content}) {
       sections(), barHost);
     renderProviders();
     renderVocabulary();
+    extraUi.refresh();
     editor.refresh({strict: !!state.errors[SECTIONS]});
     renderBar();
     syncEngineControls(content);

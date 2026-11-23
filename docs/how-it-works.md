@@ -57,7 +57,10 @@ The pipeline is judged against things we know are in the audio:
 
 The phone's recorder app saves `Recording 261112_140000.m4a` (`YYMMDD_HHMMSS`, the start time). Syncthing copies
 it into the Mac's `inbox/` folder. The pipeline **only reads the inbox**: it copies a file out and never moves,
-renames or deletes anything there.
+renames or deletes anything there. The Galaxy interpreter app saves `통역_YYMMDD_HHMMSS.m4a` in
+`Recordings/Interpreter`: share it as a second Syncthing folder and list its Mac path in the `extra_inboxes`
+setting, and that folder is read exactly like `inbox/` (same checks below; the same recording in both folders is
+one job). Call recordings are not sent.
 
 ## 2. Intake: is this file finished, new, and safe to open?
 
@@ -67,7 +70,7 @@ every check before it becomes a **job**:
 
 | Check | Why | In this demo |
 |---|---|---|
-| Only top-level `.m4a`; not hidden, not `통화*` (call recordings), not a symlink | Only voice recordings; never follow a link out of the inbox | passed |
+| Only top-level `.m4a`; not hidden, not `통화*` (call recordings), not a symlink | Only voice recordings; never follow a link out of an inbox | passed |
 | Size and modification time unchanged for 60 s | Syncthing may still be writing | demo set `stable_sec = 0` |
 | Copied to a private quarantine folder with `O_NOFOLLOW`, ≤ 1 GiB, hashed (SHA-256) | A file that changes mid-copy is ignored and retried; one hash = one job, even under another name | new |
 | `ffprobe` after a header scan; one AAC stream; 5 min ≤ length ≤ 3 h | Skip broken, pocket-length and runaway files | demo set `min_duration_sec = 60`; 90 s passes |

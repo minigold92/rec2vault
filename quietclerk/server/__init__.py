@@ -122,6 +122,14 @@ def engine_identity(runtime):
             'last_updated_at': update.get('finished_at') if update['state'] == 'done' else None}
 
 
+def sync_summary(settings, sync_factory):
+    """The sync block of /api/status. Without Syncthing it still says which extra receiving folders exist here."""
+    try:
+        return sync_factory(settings).folder()
+    except (OSError, ValueError, RuntimeError):
+        return {'state': 'unavailable', 'extra': integrations.extra_folders(settings)}
+
+
 def status_snapshot(runtime):
     with closing(store.connect(runtime.db)) as con:
         current = con.execute("SELECT * FROM jobs WHERE status='running' ORDER BY claimed_at LIMIT 1").fetchone()
@@ -536,10 +544,7 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
             return JSONResponse({'error': 'expected JSON object'}, 400)
 
     def sync_status(settings):
-        try:
-            return sync_factory(settings).folder()
-        except (OSError, ValueError, RuntimeError):
-            return {'state': 'unavailable'}
+        return sync_summary(settings, sync_factory)
 
     def dispatch(request, data):
         path, method = request.url.path, request.method
@@ -683,17 +688,21 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                         runtime.wake.set()
                     return Response(status_code=204)
                 if path == '/api/backlog' and method == 'GET':
-                    skipped = [dict(row) for row in con.execute("SELECT * FROM jobs WHERE status='skipped' ORDER BY job_id")]
+                    # `folder`: the configured receiving folder the original was received in (null when no file row is known)
+                    skipped = [dict(row) for row in con.execute(
+                        """SELECT jobs.*, (SELECT CASE folder WHEN '' THEN ? ELSE folder END FROM files
+                                           WHERE files.sha256=jobs.sha256 ORDER BY intake_status<>'registered', first_seen, folder LIMIT 1) AS folder
+                           FROM jobs WHERE status='skipped' ORDER BY job_id""", (str(Path(settings.get('inbox'))),))]
                     try:
-                        names = sync_factory(settings).backlog()
-                        return JSONResponse({'names': names, 'skipped': skipped, 'inventory': 'partial'})
+                        items = sync_factory(settings).backlog()
+                        return JSONResponse({'items': items, 'skipped': skipped, 'inventory': 'partial'})
                     except (OSError, ValueError, RuntimeError):
-                        return JSONResponse({'names': [], 'skipped': skipped, 'inventory': 'unavailable'})
+                        return JSONResponse({'items': [], 'skipped': skipped, 'inventory': 'unavailable'})
                 if path == '/api/backlog/request' and method == 'POST':
                     names = data.get('names')
                     if not isinstance(names, list) or not names or any(not backfill.valid_name(name) for name in names):
                         raise ValueError('expected recording names')
-                    backfill.request(names, settings=settings)
+                    backfill.request(names, settings=settings, folder=data.get('folder'))
                     runtime.request_scan()
                     return Response(status_code=202)
                 if path == '/api/setup/checks' and method == 'GET':

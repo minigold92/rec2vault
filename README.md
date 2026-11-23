@@ -172,6 +172,12 @@ recording. Then record five minutes or more on the phone and save.
 2. On the phone, share `Recordings/Voice Recorder` as **Send Only** and exempt Syncthing-Fork from
    battery optimization.
 3. On the Mac, accept the share into `~/QuietClerk/inbox` as **Receive Only**.
+4. Optional, for the Galaxy interpreter app: share `Recordings/Interpreter` as a second **Send Only**
+   folder, accept it on the Mac as **Receive Only** in a folder of its own (for example
+   `~/QuietClerk/inbox-interpreter`) and add that path under **Settings → Extra inboxes**
+   (`extra_inboxes`). Its recordings (`통역_YYMMDD_HHMMSS.m4a`) are read by the same rules as the first
+   folder; the same recording in both folders becomes one note. Call recordings (`Recordings/Call`)
+   are still never shared.
 
 Recordings made before the install time are skipped; pick older ones on the **Older recordings**
 screen. Syncthing-Fork 2.1.3: if the save button stays grey after choosing the folder, rotate the
@@ -324,6 +330,7 @@ apply from the next recording.
 | `output` | `~/QuietClerk/notes` | Notes folder, ideally inside your Obsidian vault |
 | `since` | install time | Skip recordings made before this time |
 | `min_duration_sec` | `300` | Skip shorter recordings |
+| `extra_inboxes` | `[]` | Further receiving folders (up to 8), read like the inbox, e.g. `["~/QuietClerk/inbox-interpreter"]` for the interpreter app. Absolute paths; not the inbox, the data folder itself, its engine folders (`archive`, `work`, …) or the notes folder |
 | `language.mode` | `auto` | `auto`, `ko` or `en` |
 | `notes.output_language` | `same` | Write notes in the meeting's language, or always `ko`/`en` |
 | `providers.order` | — | Engines to try, in order (`codex`, `claude`, `ollama`, `omp`) |
@@ -339,8 +346,8 @@ apply from the next recording.
 | `memo.enabled` | `false` | Process recordings shorter than `min_duration_sec` (but at least `memo.min_sec`, default 10 s) as voice memos |
 | `daily_note.path` | — | Daily note to link each meeting from, e.g. `~/Vault/Daily/{date}.md` (must be in the same vault) |
 
-Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY` and
-`QC_PORT` override the file.
+Environment variables `QC_ROOT`, `QC_OUTPUT`, `QC_SINCE`, `QC_LANGUAGE`, `QC_LOCAL_ONLY`, `QC_PORT` and
+`QC_EXTRA_INBOXES` (paths separated by `:`) override the file.
 
 ## Limitations
 

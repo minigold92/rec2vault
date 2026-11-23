@@ -65,9 +65,31 @@ else:
     ev({'type': 'item.completed', 'item': {'id': 'a', 'type': 'agent_message', 'text': 'checking'}})
 if mode in ('command', 'file_change', 'web_search', 'todo_list', 'file_read'):
     ev({'type': 'item.completed', 'item': {'id': 'c', 'type': {'command': 'command_execution'}.get(mode, mode)}})
+n = len((D / 'calls.txt').read_text().splitlines())   # which call of the test this is (the fake logs each one)
 if mode == 'mcp_listing':
     mcp('list_mcp_resource_templates', 'resourceTemplates', [])
     mcp('list_mcp_resources', 'resources', [])
+if mode == 'mcp_once' and n == 1:
+    mcp('list_mcp_resources', 'resources', [])
+if mode == 'mcp_then_command':
+    if n == 1:
+        mcp('list_mcp_resources', 'resources', [])
+    else:
+        ev({'type': 'item.completed', 'item': {'id': 'c', 'type': 'command_execution'}})
+if mode == 'mcp_then_leak':
+    if n == 1:
+        mcp('list_mcp_resources', 'resources', [])
+    else:
+        text += ' ' + secret
+if mode == 'mcp_and_command':
+    mcp('list_mcp_resources', 'resources', [])
+    ev({'type': 'item.completed', 'item': {'id': 'c', 'type': 'command_execution'}})
+if mode == 'mcp_and_write':
+    mcp('list_mcp_resources', 'resources', [])
+    Path('new.txt').write_text('x')
+if mode == 'mcp_and_weird':
+    mcp('list_mcp_resources', 'resources', [])
+    ev({'type': 'turn.weird'})
 if mode == 'mcp_read':
     mcp('read_mcp_resource', 'contents', [])
 if mode == 'mcp_nonempty':
@@ -213,8 +235,82 @@ def test_a_security_failure_is_permanent_for_that_version_and_file(codex, mode, 
     record = codex.record()
     assert record['passed'] is False and record['reason'] == reason and not record['transient'] and record['retry_at'] is None
     assert codex.events == [('tool_check_failed', f'codex {NEW}: not verified ({reason})', True)]
+    # one call, except an MCP-only failure which is tested once more at once (below); then never again, however long we wait
+    calls = 2 if reason == 'tool_event:mcp_tool_call' else 1
+    assert len(codex.calls()) == calls
     year = time.time() + 365 * 24 * HOUR
-    assert codex.verify(clock=lambda: year) == [] and len(codex.calls()) == 1   # never again, however long we wait
+    assert codex.verify(clock=lambda: year) == [] and len(codex.calls()) == calls
+
+
+def same_command(first, second):
+    """Two logged command lines are equal except for the temporary output file (`-o <file>`) each run gets."""
+    cut = lambda args: args[:args.index('-o')] + args[args.index('-o') + 2:]
+    return cut(first) == cut(second)
+
+
+@pytest.mark.parametrize('mode', ['command', 'file_change', 'web_search', 'file_read', 'weird_event', 'leak_message', 'leak_in_last',
+                                  'write_new', 'edit_secret', 'bad_json', 'no_turn', 'incomplete_item', 'mcp_and_command',
+                                  'mcp_and_write', 'mcp_and_weird'])
+def test_any_security_failure_other_than_mcp_alone_is_never_tested_again(codex, mode):
+    codex.blocked_job()
+    codex.set(mode=mode)
+    [check] = codex.verify()
+    assert not check.passed and not check.transient
+    assert len(codex.calls()) == 1
+    assert [e[0] for e in codex.events] == ['tool_check_failed']
+
+
+@pytest.mark.parametrize('mode', ['mcp_listing', 'mcp_read', 'mcp_nonempty'])
+def test_an_mcp_only_failure_is_tested_once_more_with_the_same_command_and_then_is_permanent(codex, mode):
+    job = codex.blocked_job()
+    codex.set(mode=mode)
+    [check] = codex.verify()
+    assert not check.passed and check.reason == 'tool_event:mcp_tool_call' and not check.transient
+    first, second = codex.calls()
+    assert same_command(first, second)                       # the same version, path and command line
+    record = codex.record()
+    assert record['passed'] is False and record['reason'] == 'tool_event:mcp_tool_call' and not record['transient']
+    assert codex.status().tool_block == 'unverified' and codex.job(job)['status'] == 'retry_wait'
+    assert codex.events == [('tool_check_failed', f'codex {NEW}: not verified (tool_event:mcp_tool_call)', True)]   # one verdict, one message
+    assert codex.verify(clock=lambda: time.time() + 365 * 24 * HOUR) == [] and len(codex.calls()) == 2
+
+
+def test_an_mcp_only_failure_that_passes_the_second_time_verifies_the_version(codex):
+    job = codex.blocked_job()
+    codex.set(mode='mcp_once')
+    [check] = codex.verify()
+    assert check.passed and check.reason == 'ok'
+    assert len(codex.calls()) == 2 and same_command(*codex.calls())
+    record = codex.record()
+    assert record['passed'] and record['source'] == 'auto' and not any('mcp' in kind for kind in record['events'])
+    assert codex.status().tool_block == 'verified' and codex.job(job)['status'] == 'queued'
+    assert [e[0] for e in codex.events] == ['tool_check_passed']   # the first attempt is not announced
+    assert codex.verify() == [] and len(codex.calls()) == 2
+
+
+@pytest.mark.parametrize('mode, reason', [('mcp_then_command', 'tool_event:command_execution'), ('mcp_then_leak', 'canary_exposed')])
+def test_the_second_test_decides_whatever_it_finds_and_there_is_no_third(codex, mode, reason):
+    codex.set(mode=mode)
+    [check] = codex.verify()
+    assert not check.passed and check.reason == reason and not check.transient
+    assert len(codex.calls()) == 2 and codex.record()['reason'] == reason
+    assert codex.verify(clock=lambda: time.time() + 365 * 24 * HOUR) == [] and len(codex.calls()) == 2
+
+
+def test_a_real_summary_call_with_an_mcp_event_is_refused_without_a_retry(codex):
+    codex.set(mode='mcp_listing')
+    provider = codex.provider()
+    provider.status()
+    with pytest.raises(providers.ToolUseDetected):
+        provider.complete('synthetic', timeout=5)
+    assert len(codex.calls()) == 1
+
+
+def test_a_manual_test_call_gets_the_same_one_extra_test(codex):
+    codex.set(mode='mcp_once')
+    answer = integrations.check_provider(codex.settings, 'codex')
+    assert answer['ok'] and answer['tool_check']['passed'] and answer['tool_check']['source'] == 'manual'
+    assert len(codex.calls()) == 3   # failed attempt, passing attempt, the synthetic call
 
 
 @pytest.mark.parametrize('mode, reason', TRANSIENT)

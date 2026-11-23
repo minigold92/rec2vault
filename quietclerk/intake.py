@@ -19,8 +19,13 @@ DiskLow = quarantine.DiskLow
 
 
 class ScanResult(list):
-    """Created IDs, plus a scan-level warning (not a fabricated job)."""
+    """Created IDs, plus scan-level facts (not fabricated jobs): why copying stopped, and which extra inboxes
+    were not there to read (they are skipped, never created, and shown in the sync status)."""
     blocked_reason = None
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.missing_inboxes = []
 
 
 def sha256(path: Path) -> str:
@@ -62,8 +67,14 @@ def waiting_info(row, now=None):
                             and now - row['last_change'] >= 3600) else None
 
 
+def inboxes(settings):
+    """(folder key, path) of every receiving folder, the primary inbox first. The key is what `files.folder` holds:
+    '' for the primary inbox (so its rows never depend on where it is) and the configured path for an extra one."""
+    return [('', Path(settings.get('inbox')))] + [(path, Path(path)) for path in settings.get('extra_inboxes')]
+
+
 def _options(settings):
-    return (Path(settings.get('inbox')), settings.root / 'archive', settings.root / 'quarantine',
+    return (settings.root / 'archive', settings.root / 'quarantine',
             settings.get('stable_sec'), min(settings.get('min_duration_sec'), settings.get('memo.min_sec'))
             if settings.get('memo.enabled') else settings.get('min_duration_sec'),
             datetime.strptime(settings.get('since'), '%Y-%m-%d %H:%M'), settings.root / 'include.txt')
@@ -91,19 +102,19 @@ def _archive(partial, archive_root, job_id, available):
     return target
 
 
-def _register(con, path, st, partial, digest, duration, options, now, available):
-    inbox, archive_root, _, _, minimum, since, include = options
+def _register(con, folder, path, st, partial, digest, duration, options, now, available):
+    archive_root, _, _, minimum, since, include = options
     relative = path.name
     if store.job_by_sha(con, digest):
-        store.finish_intake(con, relative, 'duplicate', digest)
+        store.finish_intake(con, relative, 'duplicate', digest, folder=folder)
         return None
     if con.execute('SELECT 1 FROM tombstones WHERE sha256=?', (digest,)).fetchone():
-        store.finish_intake(con, relative, 'rejected', digest, 'deleted_by_user')
+        store.finish_intake(con, relative, 'rejected', digest, 'deleted_by_user', folder=folder)
         return None
     when = recorded_at(path.name, st.st_mtime)
     # Safety limits cannot be bypassed by the include list or a policy override.
     if duration > config.MAX_DURATION_SEC:
-        store.finish_intake(con, relative, 'rejected', reason='too_long')
+        store.finish_intake(con, relative, 'rejected', reason='too_long', folder=folder)
         return None
     reason = 'too_short' if duration < minimum else None
     if reason is None and since and when < since and backfill.nfc(path.name) not in backfill.included(include):
@@ -113,44 +124,49 @@ def _register(con, path, st, partial, digest, duration, options, now, available)
     store.add_job(con, job_id, digest, backfill.nfc(path.name), str(archive) if archive else None,
                   duration, 'queued' if reason is None else 'skipped', skip_reason=reason,
                   recorded_at=when.strftime('%Y%m%d-%H%M%S'), now=now)
-    store.finish_intake(con, relative, 'registered', digest)
+    store.finish_intake(con, relative, 'registered', digest, folder=folder)
     return job_id
 
 
 def scan(con, now: float | None = None, *, settings, free_space=None) -> list[str]:
-    """One pass. A disk_low result stops copying/archiving, not observation."""
+    """One pass over the primary inbox and every extra inbox, each by the same rules. A disk_low result stops
+    copying/archiving, not observation. An extra inbox that is not there is skipped and reported."""
     now = time.time() if now is None else now
     options = _options(settings)
-    inbox, _, root, stable, _, _, _ = options
+    _, root, stable, _, _, _ = options
     created = ScanResult()
-    for path in candidates(inbox):
-        partial = None
-        try:
-            st = path.lstat()
-            if not stat.S_ISREG(st.st_mode):
-                continue
-            row = store.observe(con, path.name, st.st_size, st.st_mtime, now)
-            if row['intake_status'] != 'waiting' or st.st_size == 0:
-                continue
-            if now - row['last_change'] < stable or now - st.st_mtime < stable:
-                continue
-            if created.blocked_reason:
-                continue
-            partial, digest = quarantine.copy(inbox, path.name, root, config.MAX_BYTES,
-                                               expected=st, available=free_space)
-            duration = probe.duration(partial)
-            job_id = _register(con, path, st, partial, digest, duration, options, now, free_space)
-            if job_id:
-                created.append(job_id)
-        except (quarantine.Changed, FileNotFoundError, NotADirectoryError):
+    for folder, inbox in inboxes(settings):
+        if folder and not inbox.is_dir():
+            created.missing_inboxes.append(folder)
             continue
-        except DiskLow:
-            created.blocked_reason = 'disk_low'
-        except probe.Rejected as exc:
-            store.finish_intake(con, path.name, 'rejected', reason=exc.reason)
-        finally:
-            if partial is not None:
-                partial.unlink(missing_ok=True)
+        for path in candidates(inbox):
+            partial = None
+            try:
+                st = path.lstat()
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                row = store.observe(con, path.name, st.st_size, st.st_mtime, now, folder=folder)
+                if row['intake_status'] != 'waiting' or st.st_size == 0:
+                    continue
+                if now - row['last_change'] < stable or now - st.st_mtime < stable:
+                    continue
+                if created.blocked_reason:
+                    continue
+                partial, digest = quarantine.copy(inbox, path.name, root, config.MAX_BYTES,
+                                                   expected=st, available=free_space)
+                duration = probe.duration(partial)
+                job_id = _register(con, folder, path, st, partial, digest, duration, options, now, free_space)
+                if job_id:
+                    created.append(job_id)
+            except (quarantine.Changed, FileNotFoundError, NotADirectoryError):
+                continue
+            except DiskLow:
+                created.blocked_reason = 'disk_low'
+            except probe.Rejected as exc:
+                store.finish_intake(con, path.name, 'rejected', reason=exc.reason, folder=folder)
+            finally:
+                if partial is not None:
+                    partial.unlink(missing_ok=True)
     return created
 
 
@@ -168,10 +184,11 @@ def promote(con, job_id, mode='auto', *, settings, now=None, free_space=None):
         raise ValueError(mode)
     now = time.time() if now is None else now
     options = _options(settings)
-    inbox, archive_root, root, _, _, _, _ = options
-    known = {r['path'] for r in con.execute('SELECT path FROM files WHERE sha256=?', (row['sha256'],))}
-    paths = sorted(candidates(inbox), key=lambda p: (p.name not in known, p.name))
-    for path in paths:
+    archive_root, root, _, _, _, _ = options
+    known = {(r['folder'], r['path']) for r in con.execute('SELECT folder,path FROM files WHERE sha256=?', (row['sha256'],))}
+    paths = sorted(((folder, inbox, path) for folder, inbox in inboxes(settings) for path in candidates(inbox)),
+                   key=lambda item: ((item[0], item[2].name) not in known, item[0] != '', item[0], item[2].name))
+    for folder, inbox, path in paths:
         partial = None
         try:
             st = path.lstat()
@@ -179,27 +196,27 @@ def promote(con, job_id, mode='auto', *, settings, now=None, free_space=None):
                                                expected=st, available=free_space)
             duration = probe.duration(partial)
             if digest != row['sha256']:
-                if path.name in known:
-                    store.observe(con, path.name, st.st_size, st.st_mtime, now)
-                    _register(con, path, st, partial, digest, duration, options, now, free_space)
+                if (folder, path.name) in known:
+                    store.observe(con, path.name, st.st_size, st.st_mtime, now, folder=folder)
+                    _register(con, folder, path, st, partial, digest, duration, options, now, free_space)
                 continue
-            store.observe(con, path.name, st.st_size, st.st_mtime, now)
+            store.observe(con, path.name, st.st_size, st.st_mtime, now, folder=folder)
             if duration > config.MAX_DURATION_SEC:
-                store.finish_intake(con, path.name, 'rejected', reason='too_long')
+                store.finish_intake(con, path.name, 'rejected', reason='too_long', folder=folder)
                 continue
             if con.execute('SELECT 1 FROM tombstones WHERE sha256=?', (digest,)).fetchone():
-                store.finish_intake(con, path.name, 'rejected', digest, 'deleted_by_user')
+                store.finish_intake(con, path.name, 'rejected', digest, 'deleted_by_user', folder=folder)
                 continue
             archive = _archive(partial, archive_root, job_id, free_space)
             store.promote(con, job_id, digest, archive, mode=mode, now=now)
-            store.finish_intake(con, path.name, 'registered', digest)
+            store.finish_intake(con, path.name, 'registered', digest, folder=folder)
             return True
         except (quarantine.Changed, FileNotFoundError, NotADirectoryError):
             continue
         except probe.Rejected as exc:
-            if path.name in known:
-                store.observe(con, path.name, st.st_size, st.st_mtime, now)
-                store.finish_intake(con, path.name, 'rejected', reason=exc.reason)
+            if (folder, path.name) in known:
+                store.observe(con, path.name, st.st_size, st.st_mtime, now, folder=folder)
+                store.finish_intake(con, path.name, 'rejected', reason=exc.reason, folder=folder)
         finally:
             if partial is not None:
                 partial.unlink(missing_ok=True)

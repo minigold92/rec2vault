@@ -13,11 +13,11 @@ SCHEMA = """
 PRAGMA foreign_keys = ON;
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE files (
-  path TEXT PRIMARY KEY, name_nfc TEXT NOT NULL,
+  folder TEXT NOT NULL DEFAULT '', path TEXT NOT NULL, name_nfc TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN ('syncthing','upload','migrated')),
   size INTEGER NOT NULL, mtime REAL NOT NULL, last_change REAL NOT NULL,
   intake_status TEXT NOT NULL CHECK (intake_status IN ('waiting','rejected','registered','duplicate')),
-  reject_reason TEXT, sha256 TEXT, first_seen REAL NOT NULL);
+  reject_reason TEXT, sha256 TEXT, first_seen REAL NOT NULL, PRIMARY KEY (folder, path));
 CREATE TABLE jobs (
   job_id TEXT PRIMARY KEY, sha256 TEXT UNIQUE NOT NULL,
   source_name TEXT NOT NULL, recorded_at TEXT NOT NULL, archive_path TEXT, duration_sec REAL,
@@ -100,12 +100,39 @@ def connect(path):
         con.executescript('BEGIN IMMEDIATE;\n' + SCHEMA +
                           "\nINSERT INTO meta VALUES('schema_version','2');\nCOMMIT;")
     _migrate_vault_state(con, path.parent)
+    _migrate_files_folder(con)
     from . import overrides, search, stuck, tool_checks
     overrides.ensure_schema(con)
     tool_checks.ensure_schema(con)
     stuck.ensure_schema(con)
     search.ensure_schema(con)
     return con
+
+
+def _migrate_files_folder(con):
+    """Give `files` the `folder` column (contract 3.1): '' is the primary inbox, any other value is the path of an
+    extra inbox. Rows from before the column belong to the primary inbox. Safe to run again and from several
+    processes at once: the check is repeated inside the write transaction and a finished table is never touched."""
+    def old():
+        return not any(row[1] == 'folder' for row in con.execute("SELECT * FROM pragma_table_info('files')"))
+    if not old():
+        return
+    with transaction(con):
+        if not old():
+            return
+        con.execute('DROP TABLE IF EXISTS files_new')
+        con.execute("""CREATE TABLE files_new (
+          folder TEXT NOT NULL DEFAULT '', path TEXT NOT NULL, name_nfc TEXT NOT NULL,
+          source TEXT NOT NULL CHECK (source IN ('syncthing','upload','migrated')),
+          size INTEGER NOT NULL, mtime REAL NOT NULL, last_change REAL NOT NULL,
+          intake_status TEXT NOT NULL CHECK (intake_status IN ('waiting','rejected','registered','duplicate')),
+          reject_reason TEXT, sha256 TEXT, first_seen REAL NOT NULL, PRIMARY KEY (folder, path))""")
+        con.execute("""INSERT INTO files_new(folder,path,name_nfc,source,size,mtime,last_change,intake_status,
+                       reject_reason,sha256,first_seen)
+                       SELECT '',path,name_nfc,source,size,mtime,last_change,intake_status,reject_reason,sha256,first_seen
+                       FROM files""")
+        con.execute('DROP TABLE files')
+        con.execute('ALTER TABLE files_new RENAME TO files')
 
 
 def job(con, job_id):
@@ -119,23 +146,24 @@ def job_by_sha(con, sha):
     return con.execute('SELECT * FROM jobs WHERE sha256=?', (sha,)).fetchone()
 
 
-def observe(con, path, size, mtime, now, source='syncthing'):
+def observe(con, path, size, mtime, now, source='syncthing', folder=''):
+    """Note a file seen in `folder` ('' = the primary inbox, else the extra inbox's path); (folder, path) is its identity."""
     with transaction(con):
-        con.execute("""INSERT INTO files(path,name_nfc,source,size,mtime,last_change,intake_status,first_seen)
-                       VALUES(?,?,?,?,?,?,'waiting',?) ON CONFLICT(path) DO UPDATE SET
+        con.execute("""INSERT INTO files(folder,path,name_nfc,source,size,mtime,last_change,intake_status,first_seen)
+                       VALUES(?,?,?,?,?,?,?,'waiting',?) ON CONFLICT(folder,path) DO UPDATE SET
                        size=excluded.size,mtime=excluded.mtime,last_change=excluded.last_change,
                        intake_status='waiting',reject_reason=NULL,sha256=NULL
                        WHERE files.size<>excluded.size OR files.mtime<>excluded.mtime""",
-                    (path, unicodedata.normalize('NFC', Path(path).name), source, size, mtime, now, now))
-    return con.execute('SELECT * FROM files WHERE path=?', (path,)).fetchone()
+                    (folder, path, unicodedata.normalize('NFC', Path(path).name), source, size, mtime, now, now))
+    return con.execute('SELECT * FROM files WHERE folder=? AND path=?', (folder, path)).fetchone()
 
 
-def finish_intake(con, path, status, sha=None, reason=None):
+def finish_intake(con, path, status, sha=None, reason=None, folder=''):
     if status not in ('registered', 'duplicate', 'rejected'):
         raise ValueError(status)
     with transaction(con):
-        con.execute('UPDATE files SET intake_status=?,sha256=?,reject_reason=? WHERE path=?',
-                    (status, sha, reason, path))
+        con.execute('UPDATE files SET intake_status=?,sha256=?,reject_reason=? WHERE folder=? AND path=?',
+                    (status, sha, reason, folder, path))
 
 
 def add_job(con, job_id, sha, source_name, archive_path, duration, status='queued', skip_reason=None,

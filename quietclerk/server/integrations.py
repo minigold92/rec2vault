@@ -36,17 +36,26 @@ class Syncthing:
                  {'deviceID': device_id, 'name': pending[device_id].get('name', ''), 'addresses': ['dynamic']})
         return True
 
-    def folder(self):
-        folders = self.api('GET', 'config/folders', {})
-        inbox = Path(self.settings.get('inbox')).resolve()
-        folder = next((item for item in folders if Path(item['path']).expanduser().resolve() == inbox), None)
+    def _inboxes(self):
+        """The receiving folders as configured: the primary inbox, then each extra one."""
+        return [Path(self.settings.get('inbox'))] + [Path(path) for path in self.settings.get('extra_inboxes')]
+
+    def _shared(self, path, folders):
+        resolved = path.resolve()
+        return next((item for item in folders if Path(item['path']).expanduser().resolve() == resolved), None)
+
+    def _state(self, path, folders, cache):
+        """The Syncthing state of the folder that shares `path`: the same answer for every receiving folder."""
+        folder = self._shared(path, folders)
         if folder is None:
             return {'state': 'not_shared', 'folder_id': None, 'phone_recordings': None,
                     'count_reason': 'remote_inventory_unavailable'}
-        connections = self.api('GET', 'system/connections', {}).get('connections', {})
+        if 'connections' not in cache:
+            cache['connections'] = self.api('GET', 'system/connections', {}).get('connections', {})
+            cache['local'] = self.api('GET', 'system/status', {})['myID']
+        connections = cache['connections']
         peers = [item['deviceID'] for item in folder.get('devices', [])]
-        local = self.api('GET', 'system/status', {})['myID']
-        peers = [peer for peer in peers if peer != local]
+        peers = [peer for peer in peers if peer != cache['local']]
         if not peers:
             state = 'not_shared'
         else:
@@ -60,14 +69,35 @@ class Syncthing:
         return {'state': state, 'folder_id': folder['id'], 'phone_recordings': None,
                 'count_reason': 'remote_inventory_unavailable'}
 
+    def folder(self):
+        """The primary inbox's state, plus `extra`: one entry per extra inbox with its path, whether it exists
+        on this Mac and the same state fields (a folder Syncthing does not share is `not_shared`)."""
+        folders = self.api('GET', 'config/folders', {})
+        primary, *extras = self._inboxes()
+        cache = {}
+        state = self._state(primary, folders, cache)
+        return state | {'extra': [{'path': str(path), 'exists': path.is_dir()} | self._state(path, folders, cache)
+                                  for path in extras]}
+
     def backlog(self):
-        folder = self.folder()
-        if not folder['folder_id']:
-            return []
-        needed = self.api('GET', 'db/need', {'folder': folder['folder_id']})
-        names = {entry['name'] for group in ('progress', 'queued', 'rest')
-                 for entry in needed.get(group, []) if backfill.valid_name(entry.get('name'))}
-        return sorted(names)
+        """Recordings Syncthing has not delivered yet, as [{name, folder}] (folder: the configured path), the primary
+        inbox first. A folder Syncthing does not share has none; the same name in two folders is two entries."""
+        folders = self.api('GET', 'config/folders', {})
+        items = []
+        for path in self._inboxes():
+            folder = self._shared(path, folders)
+            if folder is None:
+                continue
+            needed = self.api('GET', 'db/need', {'folder': folder['id']})
+            names = {entry['name'] for group in ('progress', 'queued', 'rest')
+                     for entry in needed.get(group, []) if backfill.valid_name(entry.get('name'))}
+            items += [{'name': name, 'folder': str(path)} for name in sorted(names)]
+        return items
+
+
+def extra_folders(settings):
+    """The extra receiving folders and whether each exists on this Mac; needs no Syncthing."""
+    return [{'path': path, 'exists': Path(path).is_dir()} for path in settings.get('extra_inboxes')]
 
 
 def provider_status(settings, registry=providers.registry):

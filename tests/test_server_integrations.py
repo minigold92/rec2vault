@@ -112,7 +112,8 @@ def test_syncthing_pair_approve_folder_backlog_through_fake_rest(settings, tmp_p
             folder = client.get('/api/sync/folder').json()
             assert folder['state'] == 'connected' and folder['phone_recordings'] is None
             backlog = client.get('/api/backlog').json()
-            assert backlog['names'] == ['old.m4a'] and backlog['inventory'] == 'partial'
+            assert backlog['items'] == [{'name': 'old.m4a', 'folder': settings.get('inbox')}] and backlog['inventory'] == 'partial'
+            assert 'extra' in folder and folder['extra'] == []
             before = len(calls)
             assert client.post('/api/backlog/request', json={'names': ['../escape.m4a']}).status_code == 400
             assert len(calls) == before

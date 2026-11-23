@@ -1,7 +1,7 @@
 // Older recordings: pick what is only on the phone, or was skipped, and process it (design: docs/ui/backlog.html).
-// Data: GET /api/backlog (Syncthing need-list names + skipped jobs + inventory), POST /api/backlog/request,
-// POST /api/jobs/{id}/process. The API gives names only (no size, no phone total: inventory is "partial"),
-// so sizes and the total count are not shown.
+// Data: GET /api/backlog (Syncthing need-list items {name, folder} for the primary and every extra receiving folder + skipped jobs +
+// inventory), POST /api/backlog/request {names, folder} (one request per folder), POST /api/jobs/{id}/process. The API gives names
+// only (no size, no phone total: inventory is "partial"), so sizes and the total count are not shown.
 import {h, replace} from '../lib/dom.js';
 import {L, onLang} from '../lib/i18n.js';
 import {get, post, jobPath} from '../lib/api.js';
@@ -37,8 +37,17 @@ export async function mount({content}) {
     const rejected = [];
     try {
       if (state.names.size) {
-        await post('/api/backlog/request', {names: [...state.names]});
-        accepted += state.names.size;
+        // One request per receiving folder: only that folder's Syncthing ignore list is edited.
+        const byFolder = new Map();
+        for (const key of state.names) {
+          const [folder, name] = JSON.parse(key);
+          if (!byFolder.has(folder)) byFolder.set(folder, []);
+          byFolder.get(folder).push(name);
+        }
+        for (const [folder, names] of byFolder) {
+          await post('/api/backlog/request', {names, folder});
+          accepted += names.length;
+        }
       }
       for (const id of state.jobs) {
         const job = state.data.skipped.find((j) => j.job_id === id);
@@ -70,27 +79,36 @@ export async function mount({content}) {
     renderBar();
   };
 
+  // The same name can wait in two receiving folders, so a recording is picked by (folder, name).
+  const keyOf = (item) => JSON.stringify([item.folder, item.name]);
+  const extras = () => (state.settings && state.settings.extra_inboxes) || [];
+  const multi = () => extras().length > 0 || new Set(state.data.items.map((item) => item.folder)).size > 1;
+  const folderLabel = (folder) => (folder === (state.settings && state.settings.inbox) || folder === ''
+    ? L('기본 받는 폴더', 'Primary inbox') : folder.split('/').filter(Boolean).pop() || folder);
+  const folderTag = (folder) => (folder == null ? null : h('span', {title: folder}, folderLabel(folder)));
+
   function phoneList() {
-    const names = state.data.names;
-    if (!names.length) return null;
+    const items = state.data.items;
+    if (!items.length) return null;
     return h('section', {class: 'list', 'aria-labelledby': 'nr-h'},
       h('div', {class: 'list-head'}, h('h2', {id: 'nr-h'}, L('아직 받지 않은 녹음', 'Not fetched yet')),
-        h('span', {class: 'muted small'}, L(`폰에만 있어요 · Syncthing이 알려 준 ${names.length}개`, `On the phone only · ${names.length} listed by Syncthing`)),
-        h('label', {class: 'check small'}, h('input', {type: 'checkbox', 'data-engine': '', checked: names.every((name) => state.names.has(name)),
+        h('span', {class: 'muted small'}, L(`폰에만 있어요 · Syncthing이 알려 준 ${items.length}개`, `On the phone only · ${items.length} listed by Syncthing`)),
+        h('label', {class: 'check small'}, h('input', {type: 'checkbox', 'data-engine': '', checked: items.every((item) => state.names.has(keyOf(item))),
           on: {change: (event) => {
-            for (const name of names) {
-              if (event.target.checked) state.names.add(name);
-              else state.names.delete(name);
+            for (const item of items) {
+              if (event.target.checked) state.names.add(keyOf(item));
+              else state.names.delete(keyOf(item));
             }
             for (const box of content.querySelectorAll('input[data-pick="name"]')) box.checked = event.target.checked;
             renderBar();
           }}}),
         h('span', null, L('모두 선택', 'Select all')))),
-      names.map((name, index) => {
-        const when = recordedFromName(name);
+      items.map((item, index) => {
+        const when = recordedFromName(item.name);
         return h('div', {class: 'item sel'},
-          h('input', {type: 'checkbox', id: `n${index}`, 'data-engine': '', 'data-pick': 'name', class: 'check-lg', checked: state.names.has(name), on: {change: toggle(state.names, name)}}),
-          h('div', null, h('label', {class: 't mono pointer', for: `n${index}`}, name), h('div', {class: 'meta'}, when ? h('span', null, shortDate(when)) : null)),
+          h('input', {type: 'checkbox', id: `n${index}`, 'data-engine': '', 'data-pick': 'name', class: 'check-lg', checked: state.names.has(keyOf(item)), on: {change: toggle(state.names, keyOf(item))}}),
+          h('div', null, h('label', {class: 't mono pointer', for: `n${index}`}, item.name),
+            h('div', {class: 'meta'}, when ? h('span', null, shortDate(when)) : null, multi() ? folderTag(item.folder) : null)),
           h('div', {class: 'side-r'}, chip('line', '☐', L('폰에만 있음', 'Phone only'))));
       }),
       h('div', {class: 'item full'}, h('p', {class: 'small muted'},
@@ -110,7 +128,7 @@ export async function mount({content}) {
           h('input', {type: 'checkbox', id: `s-${job.job_id}`, 'data-engine': blocked ? null : '', class: 'check-lg', disabled: blocked,
             checked: state.jobs.has(job.job_id), on: {change: toggle(state.jobs, job.job_id)}}),
           h('div', null, h('label', {class: 't mono pointer', for: `s-${job.job_id}`}, job.source_name),
-            h('div', {class: 'meta'}, h('span', null, shortDate(job.recorded_at)), job.duration_sec ? h('span', null, dur(job.duration_sec)) : null, blocked ? null : h('span', {class: 'wrap'}, view.why)),
+            h('div', {class: 'meta'}, h('span', null, shortDate(job.recorded_at)), job.duration_sec ? h('span', null, dur(job.duration_sec)) : null, multi() ? folderTag(job.folder) : null, blocked ? null : h('span', {class: 'wrap'}, view.why)),
             blocked ? h('div', {class: 'why'}, L('이전 버전에서 형식 오류로 거부된 파일이라 처리할 수 없어요.', 'Rejected by the previous version for a format error; can\'t be processed.')) : null),
           h('div', {class: 'side-r'}, chip('idle', '↷', L('건너뜀', 'Skipped')), code(job.skip_reason)));
       }));

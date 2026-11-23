@@ -18,6 +18,19 @@ ITEMS = frozenset({'agent_message', 'reasoning'})
 TOOL_ITEMS = frozenset({'command_execution', 'file_change', 'web_search', 'mcp_tool_call'})
 
 
+MCP_REASON = 'tool_event:mcp_tool_call'
+
+
+def only_mcp(kinds):
+    """Whether an event-kind count (the second value of `codex_events`) holds nothing but plain answers and
+    `mcp_tool_call` items: no other tool, no unknown item or event."""
+    for kind in kinds:
+        event, _, item = kind.partition('/')
+        if event not in EVENTS or (item and item not in ITEMS and item != 'mcp_tool_call'):
+            return False
+    return True
+
+
 def is_tool_reason(reason):
     """A reason that means a tool, or something that may be one, showed up (never retryable, never transient)."""
     return bool(reason) and (reason.startswith('tool_event:') or reason == 'unknown_item')

@@ -45,8 +45,7 @@ def save(settings, changes, *, environ=None):
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        env = ({config.ENV_KEYS[key]: str(settings.get(key)).lower() if type(settings.get(key)) is bool
-                else str(settings.get(key)) for key in settings.environment_keys}
+        env = ({config.ENV_KEYS[key]: config.env_text(settings.get(key)) for key in settings.environment_keys}
                if environ is None else dict(environ))
         # Preserve the current root when tests or a CLI supplied it explicitly.
         env.setdefault('QC_ROOT', str(settings.root))
