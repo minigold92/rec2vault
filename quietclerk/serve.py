@@ -149,12 +149,12 @@ class Runtime:
                 if result is None:
                     self.wake.wait(0.25)
                 elif result['status'] == 'done':
-                    self._ops('emit', 'job_done', '--source', OPS_SOURCE, '--message', result['source_name'])
+                    self._ops('emit', 'job_done', '--source', OPS_SOURCE, '--message', result['job_id'])
                     self._ops('metric', 'job_minutes', f'{(time.time() - started) / 60:.1f}', '--unit', '분',
                               '--source', OPS_SOURCE)
                 elif result['status'] == 'failed':
                     self._ops('emit', 'job_failed', '--kind', 'error', '--source', OPS_SOURCE,
-                              '--message', f"{result['source_name']}: {(result['last_error'] or '')[:200]}")
+                              '--message', f"{result['job_id']}: {(result['last_error'] or '')[:200]}")
 
     def _ops(self, *args):
         """Report to the operator's `ops` board when <root>/.ops exists (agent-ops); best effort."""
@@ -180,7 +180,10 @@ class Runtime:
                 self._ops('metric', 'queue', str(counts.get('queued', 0) + counts.get('retry_wait', 0)),
                           '--unit', '건', '--source', OPS_SOURCE)
                 self._ops('metric', 'failed_final', str(counts.get('failed', 0)), '--unit', '건', '--source', OPS_SOURCE)
-                self._report_stuck(con)
+                try:
+                    self._report_stuck(con)
+                except Exception as exc:  # the metric is best effort: record it and try again next round, keep serving
+                    logging.getLogger(__name__).warning('stuck metric error: %s', type(exc).__name__)
                 if time.monotonic() >= next_tool_check:
                     next_tool_check = time.monotonic() + self.tool_check_interval
                     self._request_tool_check()
@@ -201,7 +204,7 @@ class Runtime:
     def _verify_providers(self, con):
         from .providers import decoy
         try:
-            return decoy.auto_verify(self.settings, notify=self.notify)
+            return decoy.auto_verify(self.settings, notify=self.notify, latest=lambda: self.settings)
         except Exception as exc:  # a failed check must never stop the executor; it is retried next round
             logging.getLogger(__name__).warning('tool check error: %s', type(exc).__name__)
             return []

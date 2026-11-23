@@ -74,19 +74,20 @@ def provider_status(settings, registry=providers.registry):
     items = []
     for name, provider in registry(settings.snapshot()).items():
         status = provider.status()
+        seen = getattr(provider, 'seen', None)   # (version, real path, sha256) of the file the status was read from
         items.append({'name': name, **asdict(status), 'endpoint_class': provider.endpoint_class(),
-                      'tool_check': tool_checks.recorded(settings.root, name, status.version)})
+                      'tool_check': tool_checks.recorded(settings.root, name, *seen) if seen else None})
     return items
 
 
-def check_provider(settings, name, registry=providers.registry, notify=None):
+def check_provider(settings, name, registry=providers.registry, notify=None, latest=None):
     available = registry(settings.snapshot())
     if name not in available:
         raise KeyError(name)
     provider = available[name]
     try:
         with providers.execution_slot(provider, blocking=False):
-            response = _check_provider(settings, provider, available, notify)
+            response = _check_provider(settings, provider, available, notify, registry, latest)
     except providers.Busy:
         return {'ok': False, 'reason': 'busy', 'sent_fields': [], 'endpoint_class': 'unknown'}
     if response['ok']:
@@ -95,7 +96,7 @@ def check_provider(settings, name, registry=providers.registry, notify=None):
     return response
 
 
-def _check_provider(settings, provider, available, notify):
+def _check_provider(settings, provider, available, notify, registry, latest):
     status, endpoint = provider.status(), provider.endpoint_class()
     # An unverified version of a provider with a decoy test is verified by that test, here as in the background.
     testable = status.tool_block == 'unverified' and hasattr(provider, 'tool_check') and bool(status.version)
@@ -108,11 +109,12 @@ def _check_provider(settings, provider, available, notify):
                 'endpoint_class': endpoint}
     report = None
     if testable:
-        check = decoy.verify(settings.snapshot(), provider.name, source='manual', notify=notify, available=available)
+        check = decoy.verify(settings.snapshot(), provider.name, source='manual', notify=notify, available=available,
+                             registry_fn=registry, latest=latest)
         if check is None:
             return {'ok': False, 'reason': 'busy', 'sent_fields': [], 'endpoint_class': endpoint}
         report = {'version': check.version, 'checked_at': check.checked_at, 'passed': check.passed,
-                  'reason': check.reason, 'events': check.events, 'source': 'manual'}
+                  'reason': check.reason, 'events': check.events, 'source': 'manual', 'transient': check.transient}
         if not check.passed:
             return {'ok': False, 'reason': 'tool_check_failed:' + check.reason, 'sent_fields': [], 'synthetic': True,
                     'endpoint_class': endpoint, 'tool_check': report}

@@ -99,7 +99,7 @@ class Executor:
             if claimed is None:
                 return None
             started = time.time()
-            log.info('start %s %s', claimed['job_id'], claimed['source_name'])
+            log.info('start %s', claimed['job_id'])
             self.execute(claimed)
             result = store.job(self.con, claimed['job_id'])
             stages = self.con.execute('''SELECT stage, status, finished_at - started_at AS sec FROM stage_runs

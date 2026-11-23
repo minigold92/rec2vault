@@ -301,5 +301,6 @@ from pathlib import Path
 args = sys.argv[1:]
 fast = 'service_tier="fast"' in args and 'features.fast_mode=true' in args
 Path(args[args.index('-o')+1]).write_text(str(fast))
+print('{"type":"thread.started"}\\n{"type":"turn.started"}\\n{"type":"turn.completed"}')
 ''')
     assert Codex({'providers.codex.speed': speed}).complete('synthetic', timeout=3).text == str(expected)

@@ -18,6 +18,9 @@ def set_paused(con, value):
     if type(value) is not bool:
         raise ValueError('expected boolean')
     with transaction(con):
+        if not value and paused(con):
+            from . import stuck
+            stuck.restart_plain_waits(con, time.time())
         con.execute("INSERT INTO meta(key,value) VALUES('paused',?) "
                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('true' if value else 'false',))
 

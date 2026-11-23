@@ -381,9 +381,9 @@ def meeting_title(runtime, row, cache):
     return cache[key]
 
 
-def waiting_hours(settings, row, known):
+def waiting_hours(settings, row, known, paused):
     """`stuck_hours` of a job view: the same rule as the stuck_jobs metric."""
-    return stuck.hours_waiting(row, known, settings.get('alerts.stuck_hours'), time.time())
+    return stuck.hours_waiting(row, known, settings.get('alerts.stuck_hours'), time.time(), paused)
 
 
 def _slim_manifest(manifest):
@@ -599,9 +599,9 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                     cursor = request.query_params.get('cursor', '')
                     rows = con.execute('SELECT * FROM jobs WHERE job_id>? AND (? IS NULL OR status=?) ORDER BY job_id LIMIT ?',
                                        (cursor, status, status, limit + 1)).fetchall()
-                    known = stuck.since_map(con)
+                    known, paused = stuck.since_map(con), store_ops.paused(con)
                     return JSONResponse({'items': [dict(row) | {'title': meeting_title(runtime, row, titles),
-                                                                'stuck_hours': waiting_hours(settings, row, known)}
+                                                                'stuck_hours': waiting_hours(settings, row, known, paused)}
                                                    for row in rows[:limit]],
                                          'next_cursor': rows[limit - 1]['job_id'] if len(rows) > limit else None})
                 if path.startswith('/api/jobs/'):
@@ -627,7 +627,8 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                                 stage['sent_fields'] = json.loads(stage['sent_fields'] or '[]')
                             runs.append(item)
                         return JSONResponse({'job': dict(row) | {'title': meeting_title(runtime, row, titles),
-                                                                 'stuck_hours': waiting_hours(settings, row, stuck.since_map(con))},
+                                                                 'stuck_hours': waiting_hours(settings, row, stuck.since_map(con),
+                                                                                              store_ops.paused(con))},
                                              'runs': runs})
                     if action == 'audio' and method == 'GET':
                         return audio_response(runtime, con, job_id, request.headers.get('range'))
@@ -702,7 +703,8 @@ def create_app(runtime=None, *, start_runtime=True, sync_factory=integrations.Sy
                 if path == '/api/providers' and method == 'GET':
                     return JSONResponse({'items': integrations.provider_status(settings, provider_registry)})
                 if path.startswith('/api/providers/') and method == 'POST':
-                    return JSONResponse(integrations.check_provider(settings, request.path_params['name'], provider_registry, runtime.notify))
+                    return JSONResponse(integrations.check_provider(settings, request.path_params['name'], provider_registry, runtime.notify,
+                                                                    lambda: runtime.settings))
                 if path == '/api/sync/pairing' and method == 'GET':
                     return JSONResponse(sync_factory(settings).pairing())
                 if path == '/api/sync/pairing/approve' and method == 'POST':
