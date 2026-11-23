@@ -330,6 +330,7 @@ apply from the next recording.
 | `providers.consent` | — | Fields each engine may receive |
 | `providers.local_only` | `false` | Block every external engine |
 | `providers.codex.speed` | `standard` | `fast` uses Codex Fast mode (about 1.4× faster, more plan usage) |
+| `alerts.stuck_hours` | `12` | Hours (1–168) a recording may wait in the same state before the `stuck_jobs` operations metric counts it and Home shows how long it has waited |
 | `updates.check` | `true` | Check GitHub for a new version once a day |
 | `vocabulary.terms` | — | Names and terms to listen for (up to 200); also given to the correction engine if you allow `vocabulary` |
 | `vocabulary.replace` | — | Exact fixes applied locally after transcription, e.g. `{from = "책 마루", to = "책마루"}` |

@@ -17,7 +17,7 @@ from concurrent.futures import Future
 from contextlib import closing
 from pathlib import Path
 
-from . import config, intake, selfupdate, store, store_ops
+from . import config, intake, selfupdate, store, store_ops, stuck
 from .executor import Executor
 
 SUPPORT = Path.home() / 'Library/Application Support/QuietClerk'
@@ -62,6 +62,7 @@ def legacy_registered(label):
 
 
 OPS_SOURCE = 'rec-pipeline'  # name kept so the existing board and rules keep matching
+TOOL_CHECK_INTERVAL = 600  # seconds between re-reads of provider versions for the decoy test (contract 8.5)
 
 
 class Runtime:
@@ -85,6 +86,8 @@ class Runtime:
         self.settings_lock = threading.Lock()
         self.maintenance = queue.Queue()
         self.monitor_interval = 60
+        self.tool_check_interval = TOOL_CHECK_INTERVAL
+        self._tool_check = None
         self.updates = selfupdate.Updates(self, worker=update_worker)
 
     def start(self):
@@ -164,15 +167,44 @@ class Runtime:
         except (OSError, subprocess.SubprocessError):
             pass
 
+    def notify(self, name, message, error=False):
+        """One ops event; callers pass codes and counts, never file names, titles or text."""
+        self._ops('emit', name, *(['--kind', 'error'] if error else []), '--source', OPS_SOURCE, '--message', message)
+
     def _monitor(self):
         with closing(store.connect(self.db)) as con:
+            next_tool_check = 0
             while not self.stopping.is_set():
                 counts = store.counts(con)
                 self._ops('heartbeat', '--source', OPS_SOURCE)
                 self._ops('metric', 'queue', str(counts.get('queued', 0) + counts.get('retry_wait', 0)),
                           '--unit', '건', '--source', OPS_SOURCE)
                 self._ops('metric', 'failed_final', str(counts.get('failed', 0)), '--unit', '건', '--source', OPS_SOURCE)
+                self._report_stuck(con)
+                if time.monotonic() >= next_tool_check:
+                    next_tool_check = time.monotonic() + self.tool_check_interval
+                    self._request_tool_check()
                 self.stopping.wait(self.monitor_interval)
+
+    def _report_stuck(self, con, now=None):
+        found = stuck.observe(con, self.settings.get('alerts.stuck_hours'), now)
+        self._ops('metric', 'stuck_jobs', str(found['count']), '--unit', '건', '--source', OPS_SOURCE)
+        if found['started']:
+            reasons = ', '.join(f'{code}:{n}' for code, n in sorted(found['reasons'].items()))
+            self.notify('jobs_stuck', f"{found['count']}건 ({reasons})", True)
+
+    def _request_tool_check(self):
+        """Queue one decoy-test pass for new provider versions on the executor thread (between jobs, never beside one)."""
+        if self._tool_check is None or self._tool_check.done():
+            self._tool_check = self.submit(self._verify_providers)
+
+    def _verify_providers(self, con):
+        from .providers import decoy
+        try:
+            return decoy.auto_verify(self.settings, notify=self.notify)
+        except Exception as exc:  # a failed check must never stop the executor; it is retried next round
+            logging.getLogger(__name__).warning('tool check error: %s', type(exc).__name__)
+            return []
 
     def _bootstrap(self):
         while not self.stopping.is_set():

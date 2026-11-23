@@ -8,7 +8,7 @@ import {get, put, post} from '../lib/api.js';
 import {btn, chip, code, say, announce, problemBlock} from '../lib/ui.js';
 import {providerLabel, LOGIN_COMMAND} from '../lib/jobs.js';
 import {problemBanner} from '../lib/cards.js';
-import {localTime} from '../lib/fmt.js';
+import {localTime, shortEpoch} from '../lib/fmt.js';
 import {footerBar} from './setup.js';
 import {syncEngineControls} from '../lib/shell.js';
 
@@ -98,6 +98,11 @@ export async function mount({content, footer}) {
     } catch (error) {
       state.tests[name] = {ok: false, reason: String(error.status), at: new Date()};
     }
+    try {
+      state.providers = (await get('/api/providers')).items;   // the test may have verified (or refused) this version
+    } catch (_) {
+      // keep the list we have; the result of the test itself is already shown
+    }
     render();
   }
 
@@ -147,9 +152,13 @@ export async function mount({content, footer}) {
               btn({small: true, icon: 'refresh', engine: true, label: L('다시 확인', 'Check again'), on: {click: recheck}})]
               : chip('idle', '?', L('확인 못 함', 'Unknown'))),
         row(L('도구 차단', 'Tool block'), p.tool_block === 'verified'
-          ? [chip('ok', '✓', L('확인됨', 'Verified')), ' ', h('span', {class: 'small muted'}, L('파일 읽기·명령 실행을 막은 채로만 불러요', 'Called only with file access and commands blocked'))]
+          ? [p.tool_check && p.tool_check.passed
+            ? chip('ok', '✓', L(`자동 확인됨 (${shortEpoch(p.tool_check.checked_at).slice(0, 5)})`, `Auto-verified (${shortEpoch(p.tool_check.checked_at).slice(0, 5)})`))
+            : chip('ok', '✓', L('확인됨', 'Verified')), ' ', h('span', {class: 'small muted'}, L('파일 읽기·명령 실행을 막은 채로만 불러요', 'Called only with file access and commands blocked'))]
           : p.tool_block === 'unsupported' ? [chip('err', '⊘', L('쓸 수 없음', 'Unavailable')), ' ', h('span', {class: 'small muted'}, p.reason || '')]
-            : [chip('warn', '!', L('확인 전', 'Not verified')), ' ', h('span', {class: 'small muted'}, L('도구를 막았는지 아직 확인하지 못했어요. 쓰려면 아래에서 이 엔진만 예외로 허용해야 해요.', 'We have not confirmed tools are blocked. To use it you must allow this one engine as an exception below.'))]),
+            : [p.tool_check && !p.tool_check.passed
+              ? [chip('err', '!', L('자동 확인 실패 — 시험 호출로 다시 확인', 'Auto-check failed — run the test call to check again')), ' ', code(p.tool_check.reason), ' ']
+              : chip('warn', '!', L('확인 전', 'Not verified')), ' ', h('span', {class: 'small muted'}, L('도구를 막았는지 아직 확인하지 못했어요. 쓰려면 아래에서 이 엔진만 예외로 허용해야 해요.', 'We have not confirmed tools are blocked. To use it you must allow this one engine as an exception below.'))]),
         row(L('실행 위치', 'Runs at'), p.endpoint_class === 'external' ? chip('warn', '↗', vendor ? L(`외부 (${vendor})`, `External (${vendor})`) : L('외부', 'External'))
           : p.endpoint_class === 'local' ? chip('ok', '✓', L('이 Mac', 'This Mac'))
             : [chip('idle', '?', L('확인 전', 'Not verified')), ' ', h('span', {class: 'small muted'}, L('이 Mac에서 도는지 아직 확인하지 못해 ‘로컬’로 치지 않아요', 'We can\'t yet confirm it runs on this Mac, so it doesn\'t count as local'))]),

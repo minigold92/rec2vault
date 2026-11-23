@@ -181,6 +181,13 @@ export async function mount({content}) {
         codes: ['blocked_reason=disk_low']}));
   }
 
+  // " (14시간째)" / " (14 h and counting)" for the longest wait among these jobs, once it is long enough to count as stuck.
+  function waited(jobs, unit) {
+    const hours = Math.max(0, ...jobs.map((j) => j.stuck_hours || 0));
+    if (!hours) return '';
+    return unit === 'h' ? ` (${hours} h and counting)` : ` (${hours}${unit})`;
+  }
+
   function authCard(blocked, v) {
     const {by} = usableProviders(v);
     const names = (state.settings['providers.order'] || []).filter((n) => by[n] && by[n].logged_in === false);
@@ -188,7 +195,7 @@ export async function mount({content}) {
     return h('article', {class: 'card tight'},
       h('div', {class: 'job-head'}, h('h3', null, L('요약 엔진에 로그인이 필요해요', 'Summary engines need sign-in')), chip('warn', '!', L('막힘 · 로그인', 'Blocked · sign-in'))),
       problemBlock({
-        what: L(`녹음 ${blocked.length}개가 교정 단계 앞에서 기다려요. 받아쓰기까지는 끝났어요.`, `${blocked.length} recording(s) are waiting before the Correct step. Transcription is done.`),
+        what: L(`녹음 ${blocked.length}개가 교정 단계 앞에서 기다려요${waited(blocked, '시간째')}. 받아쓰기까지는 끝났어요.`, `${blocked.length} recording(s) are waiting before the Correct step${waited(blocked, 'h')}. Transcription is done.`),
         why: label ? L(`켜 둔 요약 엔진(${label})이 모두 로그인이 풀렸어요.`, `Every enabled summary engine (${label}) is signed out.`) : L('켜 둔 요약 엔진이 모두 로그인이 풀렸어요.', 'Every enabled summary engine is signed out.'),
         how: L('하나라도 로그인하면 이어서 처리해요. 시간이 지나도 저절로 풀리지 않아요.', 'Sign in to either one and processing resumes. It will not clear on its own.'),
         command: names.map((n) => LOGIN_COMMAND[n]).filter(Boolean),
@@ -201,7 +208,7 @@ export async function mount({content}) {
     return h('article', {class: 'card tight'},
       h('div', {class: 'job-head'}, h('h3', null, L('노트 옮기기가 필요해요', 'Note conversion needed')), chip('warn', '!', L('막힘 · 노트 이행', 'Blocked · note conversion'))),
       problemBlock({
-        what: L(`새 회의록 ${blocked.length}개를 만들었지만 볼트에 아직 넣지 않았어요.`, `${blocked.length} new note(s) are written but not in your vault yet.`),
+        what: L(`새 회의록 ${blocked.length}개를 만들었지만 볼트에 아직 넣지 않았어요${waited(blocked, '시간째')}.`, `${blocked.length} new note(s) are written but not in your vault yet${waited(blocked, 'h')}.`),
         why: L('볼트에 이전 형식 노트가 있어서, 새 형식으로 옮기기 전에는 볼트에 쓰지 않아요. 시도 횟수는 쓰지 않았어요.',
           'The vault still has old-format notes; nothing is written to it until they are converted. No attempt was used.'),
         how: L('노트 옮기기를 마치면 이어서 처리해요.', 'Once the note conversion is done, it continues.'),
@@ -249,11 +256,12 @@ export async function mount({content}) {
     if (blockedAuth.length) cards.push(authCard(blockedAuth, v));
     else for (const name of signedOut) cards.push(providerCard(name, v));
     const recent = Date.now() / 1000 - 86400;
-    const rank = {failed: 0, retry: 1, blocked: 1, skipped: 2};
+    const rank = {failed: 0, retry: 1, blocked: 1, queued: 1, skipped: 2};
     const rows = jobs
       .filter((j) => !(j.status === 'retry_wait' && ['auth', 'disk_low', 'vault_migration'].includes(j.blocked_reason)))
       .map((job) => ({job, d: describe(job, v.env)}))
       .filter(({job, d}) => ['failed', 'retry', 'blocked'].includes(d.group)
+        || (d.group === 'queued' && job.stuck_hours)
         || (d.group === 'skipped' && ['too_short', 'no_speech'].includes(job.skip_reason) && job.created_at > recent))
       .sort((a, b) => (rank[a.d.group] - rank[b.d.group]) || (b.job.updated_at - a.job.updated_at));
     const total = cards.length + rows.length;

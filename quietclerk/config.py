@@ -36,7 +36,7 @@ DEFAULTS = {'root': str(Path.home() / 'QuietClerk'), 'inbox': None, 'output': No
             'server.port': 0, 'retention.wav_days': 7, 'ui.language': 'en',
             'updates.check': True, 'vocabulary.terms': [], 'vocabulary.replace': [],
             'summary.sections': {}, 'summary.instructions': '',
-            'memo.enabled': False, 'memo.min_sec': 10, 'daily_note.path': ''}
+            'memo.enabled': False, 'memo.min_sec': 10, 'daily_note.path': '', 'alerts.stuck_hours': 12}
 PROVIDERS = ('codex', 'claude', 'gemini', 'ollama', 'omp')
 
 
@@ -56,7 +56,7 @@ def _flatten(data, prefix=''):
             result.update(_flatten(value, name))
         else:
             result[name] = _validate(name, value) if name.startswith('vocabulary.') else value
-    return {key: _validate(key, value) if key.startswith(('summary.', 'memo.', 'daily_note.'))
+    return {key: _validate(key, value) if key.startswith(('summary.', 'memo.', 'daily_note.', 'alerts.'))
             else value for key, value in result.items()}
 
 
@@ -111,6 +111,8 @@ def _validate(key, value):
         return value
     if key == 'memo.min_sec' and not 5 <= value <= 299:
         raise SettingsError(key, 'expected 5–299 seconds')
+    if key == 'alerts.stuck_hours' and not 1 <= value <= 168:
+        raise SettingsError(key, 'expected 1–168 hours')
     if key.startswith('vocabulary.'):
         if len(value) > 200:
             raise SettingsError(key, 'expected at most 200 entries')

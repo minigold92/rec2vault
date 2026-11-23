@@ -100,8 +100,10 @@ def connect(path):
         con.executescript('BEGIN IMMEDIATE;\n' + SCHEMA +
                           "\nINSERT INTO meta VALUES('schema_version','2');\nCOMMIT;")
     _migrate_vault_state(con, path.parent)
-    from . import overrides, search
+    from . import overrides, search, stuck, tool_checks
     overrides.ensure_schema(con)
+    tool_checks.ensure_schema(con)
+    stuck.ensure_schema(con)
     search.ensure_schema(con)
     return con
 

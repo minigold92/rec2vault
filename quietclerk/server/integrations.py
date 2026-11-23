@@ -9,7 +9,8 @@ from dataclasses import asdict
 from contextlib import closing
 from pathlib import Path
 
-from .. import backfill, providers, store, syncthing
+from .. import backfill, providers, store, syncthing, tool_checks
+from ..providers import decoy
 
 
 class Syncthing:
@@ -70,18 +71,22 @@ class Syncthing:
 
 
 def provider_status(settings, registry=providers.registry):
-    return [{'name': name, **asdict(provider.status()), 'endpoint_class': provider.endpoint_class()}
-            for name, provider in registry(settings.snapshot()).items()]
+    items = []
+    for name, provider in registry(settings.snapshot()).items():
+        status = provider.status()
+        items.append({'name': name, **asdict(status), 'endpoint_class': provider.endpoint_class(),
+                      'tool_check': tool_checks.recorded(settings.root, name, status.version)})
+    return items
 
 
-def check_provider(settings, name, registry=providers.registry):
+def check_provider(settings, name, registry=providers.registry, notify=None):
     available = registry(settings.snapshot())
     if name not in available:
         raise KeyError(name)
     provider = available[name]
     try:
         with providers.execution_slot(provider, blocking=False):
-            response = _check_provider(settings, provider)
+            response = _check_provider(settings, provider, available, notify)
     except providers.Busy:
         return {'ok': False, 'reason': 'busy', 'sent_fields': [], 'endpoint_class': 'unknown'}
     if response['ok']:
@@ -90,19 +95,32 @@ def check_provider(settings, name, registry=providers.registry):
     return response
 
 
-def _check_provider(settings, provider):
+def _check_provider(settings, provider, available, notify):
     status, endpoint = provider.status(), provider.endpoint_class()
+    # An unverified version of a provider with a decoy test is verified by that test, here as in the background.
+    testable = status.tool_block == 'unverified' and hasattr(provider, 'tool_check') and bool(status.version)
     if ('transcript' not in settings.get('providers.consent').get(provider.name, []) or
             (settings.get('providers.local_only') and endpoint != 'local') or
             not status.installed or status.logged_in is False or
-            (status.tool_block != 'verified' and not (
+            (status.tool_block != 'verified' and not testable and not (
                 status.tool_block == 'unverified' and provider.name in settings.get('providers.allow_unverified')))):
         return {'ok': False, 'reason': 'consent_or_provider_policy', 'sent_fields': [],
                 'endpoint_class': endpoint}
+    report = None
+    if testable:
+        check = decoy.verify(settings.snapshot(), provider.name, source='manual', notify=notify, available=available)
+        if check is None:
+            return {'ok': False, 'reason': 'busy', 'sent_fields': [], 'endpoint_class': endpoint}
+        report = {'version': check.version, 'checked_at': check.checked_at, 'passed': check.passed,
+                  'reason': check.reason, 'events': check.events, 'source': 'manual'}
+        if not check.passed:
+            return {'ok': False, 'reason': 'tool_check_failed:' + check.reason, 'sent_fields': [], 'synthetic': True,
+                    'endpoint_class': endpoint, 'tool_check': report}
     # Never accept user text for a setup probe, even when the caller sends it.
     result = provider.complete('Synthetic transcript: Alice says hello. Reply with OK only.', timeout=30)
-    return {'ok': bool(result.text.strip()), 'sent_fields': ['transcript'], 'synthetic': True,
-            'endpoint_class': result.endpoint_class}
+    response = {'ok': bool(result.text.strip()), 'sent_fields': ['transcript'], 'synthetic': True,
+                'endpoint_class': result.endpoint_class}
+    return response | {'tool_check': report} if report else response
 
 
 def checks(root):

@@ -7,7 +7,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from .. import procs
+from .. import procs, tool_checks
 from . import (AuthExpired, Completion, ContextTooLong, NotInstalled, ProviderError,
                ProviderStatus, RateLimited, Timeout, ToolUseDetected, serial_call)
 
@@ -91,24 +91,36 @@ class Codex(CLI):
 
     def verification(self, version):
         parts = tuple(map(int, version.split('.'))) if version else ()
-        # Only minors whose flags were checked with a real canary (contract 8.5); 0.170 on 2026-11-23.
-        return 'verified' if len(parts) == 3 and parts[0] == 0 and parts[1] in VERIFIED_CODEX_MINORS else 'unverified'
+        # Fixed minors were checked by hand with a real canary (contract 8.5); any other exact version is
+        # verified only by a stored pass of the decoy test (providers/decoy.py).
+        if len(parts) == 3 and parts[0] == 0 and parts[1] in VERIFIED_CODEX_MINORS:
+            return 'verified'
+        return 'verified' if (tool_checks.recorded(self.settings.get('root'), self.name, version) or {}).get('passed') else 'unverified'
+
+    def command(self, last):
+        """The one command line for every Codex call, including the decoy test (contract 8.5)."""
+        args = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--ephemeral',
+                '--ignore-user-config', '--ignore-rules', '--json']
+        for setting in ('features.shell_tool=false', 'web_search="disabled"', 'features.apps=false',
+                        'features.plugins=false', 'features.view_image=false',
+                        'features.image_generation=false', 'features.hooks=false'):
+            args += ['-c', setting]
+        args += ['-c', 'model_reasoning_effort=' + json.dumps(self.settings.get('providers.codex.effort', 'low'))]
+        if self.settings.get('providers.codex.speed', 'standard') == 'fast':
+            # Codex Fast mode: ~1.5x faster on supported models, uses subscription limits at 2.5x.
+            args += ['-c', 'service_tier="fast"', '-c', 'features.fast_mode=true']
+        args += ['-o', str(last), '-']
+        return args
+
+    def tool_check(self, version):
+        from . import decoy
+        return decoy.run(self, version, self.command, decoy.codex_events)
 
     def complete(self, prompt, *, timeout):
         started = time.monotonic()
         with tempfile.TemporaryDirectory() as cwd:
             last = Path(cwd) / 'last.txt'
-            args = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--ephemeral',
-                    '--ignore-user-config', '--ignore-rules', '--json']
-            for setting in ('features.shell_tool=false', 'web_search="disabled"', 'features.apps=false',
-                            'features.plugins=false', 'features.view_image=false',
-                            'features.image_generation=false', 'features.hooks=false'):
-                args += ['-c', setting]
-            args += ['-c', 'model_reasoning_effort=' + json.dumps(self.settings.get('providers.codex.effort', 'low'))]
-            if self.settings.get('providers.codex.speed', 'standard') == 'fast':
-                # Codex Fast mode: ~1.5x faster on supported models, uses subscription limits at 2.5x.
-                args += ['-c', 'service_tier="fast"', '-c', 'features.fast_mode=true']
-            args += ['-o', str(last), '-']
+            args = self.command(last)
             result = self.run(args, prompt=prompt, timeout=timeout, cwd=cwd)
             self.last_events = []
             for line in result.stdout.splitlines():
